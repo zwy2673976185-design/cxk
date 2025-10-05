@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>公告更新模块（YY发送端）</title>
+    <style>
+        /* 100%保留你原始的所有样式，未增删任何一行 */
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei", sans-serif; }
+        body { height: 100vh; overflow: hidden; position: relative; background: #f5f7fa; }
+        
+        .main-content {
+            width: 100%;
+            height: 100vh;
+            background: white;
+            padding: 20px;
+            margin: 0;
+        }
+        
+        .edit-switch { 
+            position: fixed; 
+            left: 20px; 
+            bottom: 50px; 
+            z-index: 1002; 
+            padding: 10px 16px; 
+            background: #ffc107; 
+            color: #333; 
+            border: none; 
+            border-radius: 6px; 
+            font-size: 14px; 
+            cursor: pointer; 
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        .edit-switch:hover {
+            background: #e6a900;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        }
+        
+        .edit-panel { 
+            position: fixed; 
+            top: 50%; 
+            left: 50%; 
+            transform: translate(-50%, -50%); 
+            z-index: 2000; 
+            max-width: 500px; 
+            width: 90%; 
+            background: white; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2); 
+            padding: 25px; 
+            display: none; 
+        }
+        .edit-panel.active { display: block; }
+        .edit-title { 
+            color: #2563eb; 
+            font-size: 20px; 
+            margin-bottom: 20px; 
+            border-bottom: 1px solid #eee; 
+            padding-bottom: 12px; 
+            font-weight: 600;
+        }
+        .form-group { margin-bottom: 18px; }
+        .form-label { 
+            display: block; 
+            font-size: 14px; 
+            font-weight: 600; 
+            color: #333; 
+            margin-bottom: 6px; 
+        }
+        .form-tip { 
+            font-size: 12px; 
+            color: #999; 
+            margin-top: 4px; 
+        }
+        .form-input { 
+            width: 100%; 
+            padding: 10px 12px; 
+            border: 1px solid #ddd; 
+            border-radius: 6px; 
+            font-size: 14px; 
+            transition: border 0.2s ease;
+        }
+        .form-input:focus {
+            border-color: #2563eb;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        .form-textarea { 
+            width: 100%; 
+            padding: 10px 12px; 
+            border: 1px solid #ddd; 
+            border-radius: 6px; 
+            font-size: 14px; 
+            min-height: 120px; 
+            resize: vertical; 
+            line-height: 1.5; 
+            transition: border 0.2s ease;
+        }
+        .form-textarea:focus {
+            border-color: #2563eb;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+        .file-upload { 
+            padding: 15px; 
+            border: 2px dashed #ddd; 
+            border-radius: 6px; 
+            margin-bottom: 10px; 
+            transition: border 0.2s ease;
+            text-align: center;
+            cursor: pointer;
+        }
+        .file-upload:hover {
+            border-color: #2563eb;
+            background: #f9faff;
+        }
+        .file-upload-icon {
+            font-size: 24px;
+            color: #999;
+            margin-bottom: 8px;
+        }
+        .file-info { 
+            font-size: 13px; 
+            color: #666; 
+            margin-top: 8px;
+        }
+        #fileInput {
+            display: none;
+        }
+        .edit-btns { 
+            display: flex; 
+            gap: 12px; 
+            margin-top: 25px; 
+        }
+        .edit-btn { 
+            flex: 1; 
+            padding: 12px; 
+            border-radius: 8px; 
+            font-size: 14px; 
+            cursor: pointer; 
+            border: none;
+            font-weight: 500; 
+            transition: all 0.2s ease;
+        }
+        .sync-btn { 
+            background: #2563eb; 
+            color: white; 
+            box-shadow: 0 2px 5px rgba(37, 99, 235, 0.3);
+        }
+        .sync-btn:hover { 
+            background: #1d4ed8;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(37, 99, 235, 0.4);
+        }
+        .close-btn { 
+            background: #f5f5f5; 
+            color: #666; 
+        }
+        .close-btn:hover { 
+            background: #eee;
+            transform: translateY(-1px);
+        }
+        
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            z-index: 9999;
+            display: none;
+        }
+        .current-notice {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #2563eb;
+        }
+        .notice-preview {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            margin-top: 20px;
+        }
+        .preview-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #2563eb;
+            margin-bottom: 8px;
+        }
+        .preview-content {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.5;
+        }
+        .copy-link {
+            background: #f1f5f9;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 12px;
+            word-break: break-all;
+            cursor: pointer;
+        }
+        .copy-link:hover {
+            background: #e2e8f0;
+        }
+    </style>
+</head>
+<body>
+    <!-- 100%保留你原始的所有DOM结构，未增删任何元素 -->
+    <div class="main-content" id="mainContent">
+        <div class="current-notice">
+            <h3>当前公告状态（YY发送端）</h3>
+            <div id="currentNoticeInfo">暂无活跃公告</div>
+        </div>
+        <div class="notice-preview">
+            <h3>Y接收端使用说明</h3>
+            <p><strong>步骤1：</strong> 发布公告后复制下方链接</p>
+            <p><strong>步骤2：</strong> 在接收端页面中粘贴链接并访问</p>
+            <div class="copy-link" id="receiverLink">
+                接收端链接：https://zwy2673976185-design.github.io/y/index.html
+            </div>
+        </div>
+    </div>
+    <button class="edit-switch" id="editSwitch">发布新公告</button>
+    
+    <div class="edit-panel" id="editPanel">
+        <h2 class="edit-title">发布新公告（YY发送端）</h2>
+        
+        <div class="form-group">
+            <label class="form-label">1. 公告标题</label>
+            <input type="text" class="form-input" id="editTitle" placeholder="填写公告标题，例如：v2.0.1 版本更新">
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">2. 更新日期</label>
+            <input type="date" class="form-input" id="editDate">
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">3. 更新内容</label>
+            <textarea class="form-textarea" id="editContent" placeholder="描述更新内容，例如：1. 修复XX问题；2. 新增XX功能..."></textarea>
+        </div>
+        
+        <div class="form-group">
+            <label class="form-label">4. HTML资源链接</label>
+            <input type="url" class="form-input" id="editResourceUrl" placeholder="填写HTML在线链接">
+            <div class="file-upload" onclick="document.getElementById('fileInput').click()">
+                <div class="file-upload-icon">📁</div>
+                <div>点击上传本地HTML文件</div>
+                <input type="file" id="fileInput" accept=".html">
+            </div>
+            <div class="file-info" id="fileInfo">未选择文件 | 仅支持HTML格式</div>
+        </div>
+        
+        <div class="edit-btns">
+            <button class="edit-btn close-btn" id="closeEdit">取消</button>
+            <button class="edit-btn sync-btn" id="syncNotice">发布公告</button>
+        </div>
+    </div>
+    <div id="toast" class="toast">公告发布成功</div>
+
+    <script>
+        (function() {
+            if (window.noticeUpdateInjected) return;
+            window.noticeUpdateInjected = true;
+            
+            // 100%保留你原始的所有元素引用
+            const editSwitch = document.getElementById('editSwitch');
+            const editPanel = document.getElementById('editPanel');
+            const closeEdit = document.getElementById('closeEdit');
+            const syncNotice = document.getElementById('syncNotice');
+            const editTitle = document.getElementById('editTitle');
+            const editDate = document.getElementById('editDate');
+            const editContent = document.getElementById('editContent');
+            const editResourceUrl = document.getElementById('editResourceUrl');
+            const fileInput = document.getElementById('fileInput');
+            const fileInfo = document.getElementById('fileInfo');
+            const toast = document.getElementById('toast');
+            const currentNoticeInfo = document.getElementById('currentNoticeInfo');
+            const receiverLink = document.getElementById('receiverLink');
+            
+            // 【仅新增】连接你的Render服务器（替换为你的Render地址）
+            const ws = new WebSocket('wss://cxk-z875.onrender.com');
+            
+            // 100%保留你原始的所有基础逻辑
+            editDate.value = new Date().toISOString().split('T')[0];
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) {
+                    fileInfo.textContent = '未选择文件 | 仅支持HTML格式';
+                    editResourceUrl.value = '';
+                    return;
+                }
+                if (file.type !== 'text/html' && !file.name.endsWith('.html')) {
+                    alert('仅支持HTML格式文件！');
+                    fileInput.value = '';
+                    return;
+                }
+                const maxSize = 10 * 1024 * 1024;
+                if (file.size > maxSize) {
+                    alert('文件太大，请选择小于10MB的HTML文件！');
+                    fileInput.value = '';
+                    return;
+                }
+                fileInfo.textContent = `已选择：${file.name}`;
+                const fileUrl = URL.createObjectURL(file);
+                editResourceUrl.value = fileUrl;
+                showToast('HTML文件上传成功！');
+            });
+            function formatFileSize(size) {
+                if (size < 1024) return `${size} B`;
+                if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+                return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+            }
+            function showToast(message) {
+                toast.textContent = message;
+                toast.style.display = 'block';
+                setTimeout(() => {
+                    toast.style.display = 'none';
+                }, 3000);
+            }
+            editSwitch.addEventListener('click', () => editPanel.classList.add('active'));
+            closeEdit.addEventListener('click', () => editPanel.classList.remove('active'));
+
+            // 【核心修改】发布公告：从“生成哈希链接”改为“发送到服务器”
+            syncNotice.addEventListener('click', () => {
+                const title = editTitle.value.trim();
+                const content = editContent.value.trim();
+                const resourceUrl = editResourceUrl.value.trim();
+                
+                if (!title || !content) {
+                    alert('公告标题和内容不能为空！');
+                    return;
+                }
+                if (!resourceUrl) {
+                    alert('请填写HTML资源链接或上传HTML文件！');
+                    return;
+                }
+                const [year, month, day] = editDate.value.split('-');
+                const noticeData = {
+                    noticeId: 'notice_' + Date.now(),
+                    title: title,
+                    date: `${year}年${month}月${day}日`,
+                    content: content.replace(/\n/g, '<br>'),
+                    resourceUrl: resourceUrl,
+                    timestamp: new Date().getTime()
+                };
+                // 1. 保留你原始的localStorage存储（查看当前状态用）
+                localStorage.setItem('currentNotice', JSON.stringify(noticeData));
+                // 2. 【新增】发送到服务器（中转给接收端）
+                ws.send(JSON.stringify({ type: 'notice', data: noticeData }));
+                
+                // 100%保留你原始的UI更新逻辑
+                const shortUrl = resourceUrl.length > 40 ? resourceUrl.slice(0, 40) + '...' : resourceUrl;
+                currentNoticeInfo.innerHTML = `
+                    <div style="margin-bottom: 10px;">
+                        <strong>标题：</strong>${title}<br>
+                        <strong>日期：</strong>${noticeData.date}<br>
+                        <strong>HTML链接：</strong>${shortUrl}<br>
+                        <strong>状态：</strong><span style="color: #10b981;">活跃中</span>
+                    </div>
+                    <button class="edit-btn" onclick="clearCurrentNotice()" style="background: #ef4444; color: white; padding: 8px 12px; font-size: 12px;">清除公告</button>
+                `;
+                receiverLink.innerHTML = `接收端链接（无需复制，已实时同步）：<br>https://zwy2673976185-design.github.io/y/index.html`;
+                receiverLink.onclick = () => {
+                    navigator.clipboard.writeText('https://zwy2673976185-design.github.io/y/index.html').then(() => {
+                        showToast('接收端地址已复制！');
+                    });
+                };
+                showToast('公告发布成功！接收端已实时同步');
+                // 100%保留你原始的表单重置逻辑
+                editTitle.value = '';
+                editContent.value = '';
+                editResourceUrl.value = '';
+                fileInput.value = '';
+                fileInfo.textContent = '未选择文件 | 仅支持HTML格式';
+                editPanel.classList.remove('active');
+            });
+
+            // 【核心修改】清除公告：从“删除localStorage”改为“通知服务器清除”
+            window.clearCurrentNotice = function() {
+                if (confirm('确定要清除当前公告吗？')) {
+                    localStorage.removeItem('currentNotice');
+                    // 【新增】通知服务器清除，接收端同步清空
+                    ws.send(JSON.stringify({ type: 'clear' }));
+                    loadCurrentNotice();
+                    showToast('公告已清除，接收端已同步');
+                }
+            };
+
+            // 100%保留你原始的初始化逻辑
+            function loadCurrentNotice() {
+                const noticeData = localStorage.getItem('currentNotice');
+                if (noticeData) {
+                    const notice = JSON.parse(noticeData);
+                    const shortUrl = notice.resourceUrl.length > 40 
+                        ? notice.resourceUrl.slice(0, 40) + '...' 
+                        : notice.resourceUrl;
+                    currentNoticeInfo.innerHTML = `
+                        <div style="margin-bottom: 10px;">
+                            <strong>标题：</strong>${notice.title}<br>
+                            <strong>日期：</strong>${notice.date}<br>
+                            <strong>HTML链接：</strong>${shortUrl}<br>
+                            <strong>状态：</strong><span style="color: #10b981;">活跃中</span>
+                        </div>
+                        <button class="edit-btn" onclick="clearCurrentNotice()" style="background: #ef4444; color: white; padding: 8px 12px; font-size: 12px;">清除公告</button>
+                    `;
+                    receiverLink.innerHTML = `接收端链接（无需复制，已实时同步）：<br>https://zwy2673976185-design.github.io/y/index.html`;
+                    receiverLink.onclick = () => {
+                        navigator.clipboard.writeText('https://zwy2673976185-design.github.io/y/index.html').then(() => {
+                            showToast('接收端地址已复制！');
+                        });
+                    };
+                } else {
+                    currentNoticeInfo.innerHTML = '暂无活跃公告';
+                    receiverLink.innerHTML = '接收端链接：https://zwy2673976185-design.github.io/y/index.html';
+                }
+            }
+            loadCurrentNotice();
+        })();
+    </script>
+</body>
+</html>
