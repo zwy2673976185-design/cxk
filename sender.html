@@ -16,17 +16,15 @@
   <button onclick="sendToServer()">发送到iOS设备</button>
 
   <script>
-    // 替换成你的Render项目公网地址（后续部署后填）
-    const RENDER_URL = 'wss://prj-d3gul5b3fgac739beq00.onrender.com';
-    // 替换成上面server.js里的SENDER_TOKEN（比如“ios-notice-123”）
-    const SENDER_TOKEN = 'your-ios-token';
+    // 已替换为你的Render项目公网地址
+    const RENDER_URL = 'wss://cxk-z875.onrender.com';
+    // 已替换为和server.js一致的Token
+    const SENDER_TOKEN = 'ios-notice-123';
 
-    // 连接服务器
     let ws = new WebSocket(`${RENDER_URL}?token=${SENDER_TOKEN}`);
     ws.onopen = () => console.log('已连接服务器，可发送公告');
     ws.onerror = (err) => alert('连接失败，检查地址和token是否正确');
 
-    // 发送公告
     function sendToServer() {
       const title = document.getElementById('noticeTitle').value.trim();
       const content = document.getElementById('noticeContent').value.trim();
@@ -34,10 +32,8 @@
         alert('标题和内容不能为空！');
         return;
       }
-      // 发送给服务器
       ws.send(JSON.stringify({ title, content }));
       alert('发送成功！iOS设备1秒内会弹通知');
-      // 清空输入
       document.getElementById('noticeTitle').value = '';
       document.getElementById('noticeContent').value = '';
     }
