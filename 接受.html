@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>悬浮功能面板（Y接收端·实时推送）</title>
+    <style>
+        /* 100%保留你原始样式，无任何改动 */
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei", sans-serif; }
+        body { height: 100vh; overflow: hidden; position: relative; background: #f5f7fa; }
+        
+        .html-render-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100vh;
+            z-index: 1000;
+            display: none;
+            border: none;
+        }
+        .load-tip {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #666;
+            font-size: 14px;
+            z-index: 1000;
+            display: none;
+        }
+        .float-btn { 
+            position: fixed; 
+            z-index: 1002; 
+            width: 60px; 
+            height: 60px; 
+            border-radius: 0; 
+            box-shadow: 0 3px 15px rgba(0,0,0,0.3); 
+            cursor: pointer; 
+            user-select: none; 
+            -webkit-tap-highlight-color: transparent; 
+            transition: transform 0.2s ease, box-shadow 0.2s ease; 
+            background-image: url(https://i.imgs.ovh/2025/09/28/75fraO.jpeg);
+            background-color: #f0f0f0; 
+            background-size: cover; 
+            background-position: center; 
+            background-repeat: no-repeat; 
+            padding: 0; 
+            margin: 0; 
+            border: none; 
+            right: 20px; 
+            bottom: 50px; 
+        }
+        .float-btn:active { transform: scale(0.95); box-shadow: 0 5px 20px rgba(0,0,0,0.4); }
+        
+        .float-window { 
+            position: fixed; 
+            z-index: 1001; 
+            width: 300px; 
+            height: 280px; 
+            background: white; 
+            border-radius: 12px; 
+            box-shadow: 0 5px 25px rgba(0,0,0,0.15); 
+            overflow: hidden; 
+            display: none; 
+            opacity: 0; 
+            transition: opacity 0.3s ease; 
+        }
+        .float-window.active { display: block; opacity: 1; }
+        
+        .window-header { 
+            padding: 12px 15px; 
+            background: linear-gradient(90deg, #2563eb, #3b82f6); 
+            color: white; 
+            font-size: 16px; 
+            font-weight: 500; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            cursor: move; 
+            -webkit-tap-highlight-color: transparent; 
+            height: 44px; 
+        }
+        .modal-back { 
+            background: transparent; 
+            border: none; 
+            color: white; 
+            font-size: 14px; 
+            cursor: pointer; 
+            padding: 4px 8px; 
+            border-radius: 4px; 
+            transition: background 0.2s ease; 
+            display: none; 
+            -webkit-tap-highlight-color: transparent; 
+        }
+        .modal-back:hover { background: rgba(255,255,255,0.1); }
+        
+        .func-buttons { 
+            padding: 10px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 10px; 
+            max-height: calc(280px - 44px); 
+            overflow-y: auto; 
+            -webkit-overflow-scrolling: touch; 
+        }
+        .func-btn { 
+            padding: 12px 15px; 
+            border-radius: 8px; 
+            background: #f8f9fa; 
+            font-size: 14px; 
+            color: #333; 
+            text-align: left; 
+            cursor: pointer; 
+            transition: background 0.2s ease, transform 0.1s ease; 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            -webkit-tap-highlight-color: transparent; 
+            border: none; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .func-btn:hover { background: #f1f3f5; transform: translateY(-1px); }
+        .btn-icon { width: 20px; height: 20px; opacity: 0.7; }
+        
+        .content-panel { 
+            padding: 15px; 
+            max-height: calc(280px - 44px); 
+            overflow-y: auto; 
+            -webkit-overflow-scrolling: touch; 
+            display: none; 
+        }
+        .content-panel.active { display: block; }
+        
+        .user-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: #2563eb;
+            margin-bottom: 10px;
+        }
+        .user-desc {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.5;
+        }
+        .empty-tip {
+            text-align: center;
+            color: #999;
+            font-size: 14px;
+            line-height: 1.5;
+            padding: 20px 0;
+        }
+        
+        .notice-item { 
+            margin-bottom: 10px; 
+            padding: 10px; 
+            background: #f9faff; 
+            border-radius: 8px; 
+            border: 1px solid #ebf2ff; 
+            display: block; 
+        }
+        .notice-item.hidden { 
+            display: none; 
+        }
+        .notice-title { 
+            font-weight: 600; 
+            color: #2563eb; 
+            margin-bottom: 5px; 
+            font-size: 15px; 
+        }
+        .notice-time { 
+            font-size: 12px; 
+            color: #999; 
+            margin-bottom: 6px; 
+        }
+        .notice-content { 
+            font-size: 13px; 
+            color: #666; 
+            line-height: 1.4; 
+            margin-bottom: 12px; 
+            word-break: break-word; 
+        }
+        .progress-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+        }
+        .progress-left {
+            flex: 1; 
+        }
+        .download-progress {
+            height: 6px;
+            background: #ebf2ff;
+            border-radius: 3px;
+            overflow: hidden;
+            display: none; 
+            width: 100%;
+        }
+        .progress-bar {
+            height: 100%;
+            background: #2563eb;
+            border-radius: 3px;
+            width: 0%; 
+            transition: width 0.1s linear;
+        }
+        .action-btns {
+            display: flex;
+            gap: 8px;
+        }
+        .action-btn { 
+            padding: 6px 12px; 
+            border: none; 
+            border-radius: 6px; 
+            font-size: 12px; 
+            cursor: pointer; 
+            transition: background 0.2s ease; 
+            white-space: nowrap; 
+        }
+        .download-btn { 
+            background: #2563eb; 
+            color: white; 
+            box-shadow: 0 1px 3px rgba(37, 99, 235, 0.2); 
+        }
+        .update-btn { 
+            background: #10b981; 
+            color: white; 
+            box-shadow: 0 1px 3px rgba(16, 185, 129, 0.2); 
+            display: none; 
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            margin-left: 8px;
+        }
+        .status-new {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        .status-updated {
+            background: #d1fae5;
+            color: #065f46;
+        }
+    </style>
+</head>
+<body>
+    <iframe class="html-render-container" id="htmlRenderIframe" onload="hideLoadTip()" onerror="showErrorTip()"></iframe>
+    <div class="load-tip" id="loadTip">加载HTML中...</div>
+    <button class="float-btn" id="floatBtn"></button>
+    <div class="float-window" id="floatWindow">
+        <div class="window-header" id="windowHeader">
+            功能面板（Y接收端）
+            <button class="modal-back" id="modalBack">返回</button>
+        </div>
+        <div class="func-buttons" id="funcButtons">
+            <button class="func-btn" id="btnMy">
+                <span>我的</span>
+                <img src="https://img.icons8.com/ios-glyphs/30/666/user--v1.png" class="btn-icon" alt="我的">
+            </button>
+            <button class="func-btn" id="btnNotice">
+                <span>公告更新</span>
+                <img src="https://img.icons8.com/ios-glyphs/30/666/announcement--v1.png" class="btn-icon" alt="公告更新">
+            </button>
+            <button class="func-btn" id="btnContact">
+                <span>联系作者</span>
+                <img src="https://img.icons8.com/ios-glyphs/30/666/contact-card--v1.png" class="btn-icon" alt="联系作者">
+            </button>
+            <button class="func-btn" id="btnSetting">
+                <span>设置</span>
+                <img src="https://img.icons8.com/ios-glyphs/30/666/settings--v1.png" class="btn-icon" alt="设置">
+            </button>
+        </div>
+        <div class="content-panel" id="panelMy">
+            <div class="user-name">用一生找寻</div>
+            <div class="user-desc">当前功能待开发，暂显示用户名<br>后续可添加头像、个人信息等</div>
+        </div>
+        <div class="content-panel" id="panelNotice">
+            <div id="noticeContainer">
+                <div class="empty-tip" id="defaultTip">暂无公告<br>等待发送端发布（实时同步）</div>
+                <div class="notice-item" id="pushNotice"></div>
+            </div>
+        </div>
+        <div class="content-panel" id="panelContact">
+            <div class="empty-tip">点击下方链接联系作者<br><a href="https://qzone.qq.com/2673976185" target="_blank" style="color: #2563eb; text-decoration: none;">前往作者QQ空间</a></div>
+        </div>
+        <div class="content-panel" id="panelSetting">
+            <div class="empty-tip">设置功能待开发<br>敬请期待</div>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            if (window.floatingWindowInjected) return;
+            window.floatingWindowInjected = true;
+            const config = { 
+                floatBtnSize: 60, 
+                safeMargin: 20, 
+                defaultSafeBottom: 20, 
+                windowWidth: 300, 
+                windowHeight: 280 
+            };
+            
+            // 修复：补充utils工具函数（之前遗漏导致JS报错）
+            const utils = {
+                getSafeBottom() { 
+                    const p = parseFloat(getComputedStyle(document.body).paddingBottom); 
+                    return isNaN(p) ? config.defaultSafeBottom : p; 
+                },
+                checkWindowBound(left, top) { 
+                    const w = document.documentElement.clientWidth; 
+                    const h = document.documentElement.clientHeight; 
+                    const sb = utils.getSafeBottom(); 
+                    return { 
+                        left: Math.max(config.safeMargin, Math.min(left, w - config.windowWidth - config.safeMargin)), 
+                        top: Math.max(config.safeMargin, Math.min(top, h - config.windowHeight - sb - config.safeMargin)) 
+                    }; 
+                },
+                getDefaultWindowPos() { 
+                    const w = document.documentElement.clientWidth; 
+                    const h = document.documentElement.clientHeight; 
+                    return utils.checkWindowBound((w-config.windowWidth)/2, (h-config.windowHeight)/2); 
+                }
+            };
+
+            // 元素引用（保留原始）
+            const floatBtn = document.getElementById('floatBtn');
+            const floatWindow = document.getElementById('floatWindow');
+            const modalBack = document.getElementById('modalBack');
+            const funcButtons = document.getElementById('funcButtons');
+            const btnMy = document.getElementById('btnMy');
+            const btnNotice = document.getElementById('btnNotice');
+            const btnContact = document.getElementById('btnContact');
+            const btnSetting = document.getElementById('btnSetting');
+            const panelMy = document.getElementById('panelMy');
+            const panelNotice = document.getElementById('panelNotice');
+            const panelContact = document.getElementById('panelContact');
+            const panelSetting = document.getElementById('panelSetting');
+            const defaultTip = document.getElementById('defaultTip');
+            const pushNotice = document.getElementById('pushNotice');
+            const htmlRenderIframe = document.getElementById('htmlRenderIframe');
+            const loadTip = document.getElementById('loadTip');
+            let btnIsDragging = false, winIsDragging = false, isInMainPanel = true;
+            let currentWindowPos = utils.getDefaultWindowPos();
+            let currentNoticeData = null;
+
+            // 1. 请求系统通知权限（确保能弹窗提醒）
+            document.addEventListener('DOMContentLoaded', () => {
+                if (Notification.permission !== 'granted') {
+                    Notification.requestPermission().then(perm => {
+                        if (perm === 'granted') {
+                            console.log('✅ 通知权限已允许');
+                        } else {
+                            alert('⚠️ 请允许浏览器通知权限，否则无法收到弹窗提醒');
+                        }
+                    });
+                }
+            });
+
+            // 2. 显示系统通知（收到公告时触发）
+            function showSystemNotice(title, content) {
+                if (Notification.permission === 'granted') {
+                    new Notification(title, { 
+                        body: content,
+                        icon: 'https://img.icons8.com/ios-glyphs/30/2563eb/announcement--v1.png' // 通知图标
+                    });
+                }
+            }
+
+            // 3. 连接服务器（固定你的Render地址，无需修改）
+            const ws = new WebSocket('wss://cxk-z875.onrender.com');
+            
+            // 4. 核心：接收服务器推送的公告
+            ws.onmessage = (e) => {
+                try {
+                    currentNoticeData = JSON.parse(e.data);
+                    console.log('📥 收到公告：', currentNoticeData);
+                    
+                    // 处理“清除公告”指令
+                    if (currentNoticeData.type === 'clear') {
+                        currentNoticeData = null;
+                        renderNotice();
+                        showSystemNotice('公告已清除', '发送端已清除所有公告');
+                        return;
+                    }
+                    
+                    // 处理“新公告”指令
+                    if (currentNoticeData.type === 'notice') {
+                        renderNotice(); // 渲染公告到面板
+                        showSystemNotice(currentNoticeData.title, currentNoticeData.content); // 系统弹窗
+                        
+                        // 自动展开公告面板（用户无需手动点击）
+                        if (!panelNotice.classList.contains('active')) {
+                            switchContentPanel('panelNotice');
+                            alert(`🎉 收到新公告：${currentNoticeData.title}`); // 额外弹窗提醒
+                        }
+                    }
+                } catch (err) {
+                    console.error('❌ 解析公告失败：', err);
+                    alert('收到无效公告数据，请刷新页面重试');
+                }
+            };
+
+            // 5. 修复：公告渲染逻辑（匹配发送端消息格式）
+            function renderNotice() {
+                if (!currentNoticeData || currentNoticeData.type !== 'notice') {
+                    defaultTip.style.display = 'block';
+                    pushNotice.style.display = 'none';
+                    return;
+                }
+                
+                // 渲染公告内容（与发送端字段完全匹配）
+                pushNotice.innerHTML = `
+                    <div class="notice-title">
+                        ${currentNoticeData.title}
+                        <span class="status-badge status-new">NEW</span>
+                    </div>
+                    <div class="notice-time">更新时间：${currentNoticeData.date}</div>
+                    <div class="notice-content">${currentNoticeData.content}</div>
+                    ${currentNoticeData.resourceUrl !== '无' ? 
+                        `<div class="notice-content">
+                            <strong>资源链接：</strong><a href="${currentNoticeData.resourceUrl}" target="_blank" style="color: #2563eb;">点击访问</a>
+                        </div>` : ''
+                    }
+                `;
+                
+                defaultTip.style.display = 'none';
+                pushNotice.style.display = 'block';
+            }
+
+            // 6. 保留原始UI交互逻辑（悬浮窗拖拽、面板切换）
+            function switchContentPanel(targetId) {
+                funcButtons.style.display = 'none';
+                [panelMy, panelNotice, panelContact, panelSetting].forEach(panel => {
+                    panel.classList.remove('active');
+                    panel.style.display = 'none';
+                });
+                const targetPanel = document.getElementById(targetId);
+                targetPanel.classList.add('active');
+                targetPanel.style.display = 'block';
+                modalBack.style.display = 'block';
+                isInMainPanel = false;
+                if (targetId === 'panelNotice') {
+                    renderNotice();
+                }
+            }
+            function backToMainPanel() {
+                [panelMy, panelNotice, panelContact, panelSetting].forEach(panel => {
+                    panel.classList.remove('active');
+                    panel.style.display = 'none';
+                });
+                funcButtons.style.display = 'flex';
+                modalBack.style.display = 'none';
+                isInMainPanel = true;
+            }
+
+            // 悬浮按钮点击/拖拽
+            floatBtn.addEventListener('click', () => {
+                if (btnIsDragging) return;
+                floatWindow.classList.toggle('active');
+                if (floatWindow.classList.contains('active')) {
+                    currentWindowPos = utils.getDefaultWindowPos();
+                    floatWindow.style.left = `${currentWindowPos.left}px`;
+                    floatWindow.style.top = `${currentWindowPos.top}px`;
+                }
+            });
+            let btnDragStart, winDragStart;
+            floatBtn.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                btnDragStart = { x: touch.clientX, y: touch.clientY, rect: floatBtn.getBoundingClientRect() };
+                btnIsDragging = false;
+            }, { passive: true });
+            floatBtn.addEventListener('touchmove', (e) => {
+                const touch = e.touches[0];
+                const dx = touch.clientX - btnDragStart.x;
+                const dy = touch.clientY - btnDragStart.y;
+                if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                    btnIsDragging = true;
+                    const left = btnDragStart.rect.left + dx;
+                    const top = btnDragStart.rect.top + dy;
+                    const winW = document.documentElement.clientWidth;
+                    const winH = document.documentElement.clientHeight;
+                    const safeBottom = utils.getSafeBottom();
+                    const boundedLeft = Math.max(20, Math.min(left, winW - 60 - 20));
+                    const boundedTop = Math.max(20, Math.min(top, winH - 60 - safeBottom - 20));
+                    floatBtn.style.left = `${boundedLeft}px`;
+                    floatBtn.style.top = `${boundedTop}px`;
+                }
+            }, { passive: false });
+
+            // 面板拖拽
+            windowHeader.addEventListener('touchstart', (e) => {
+                if (!floatWindow.classList.contains('active')) return;
+                const touch = e.touches[0];
+                winDragStart = { x: touch.clientX, y: touch.clientY, rect: floatWindow.getBoundingClientRect() };
+                winIsDragging = false;
+            }, { passive: true });
+            windowHeader.addEventListener('touchmove', (e) => {
+                if (!floatWindow.classList.contains('active')) return;
+                const touch = e.touches[0];
+                const dx = touch.clientX - winDragStart.x;
+                const dy = touch.clientY - winDragStart.y;
+                if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                    winIsDragging = true;
+                    currentWindowPos = { left: winDragStart.rect.left + dx, top: winDragStart.rect.top + dy };
+                    currentWindowPos = utils.checkWindowBound(currentWindowPos.left, currentWindowPos.top);
+                    floatWindow.style.left = `${currentWindowPos.left}px`;
+                    floatWindow.style.top = `${currentWindowPos.top}px`;
+                }
+            }, { passive: false });
+
+            // 按钮点击
+            modalBack.addEventListener('click', (e) => { e.stopPropagation(); backToMainPanel(); });
+            btnMy.addEventListener('click', (e) => { e.stopPropagation(); switchContentPanel('panelMy'); });
+            btnNotice.addEventListener('click', (e) => { e.stopPropagation(); switchContentPanel('panelNotice'); });
+            btnContact.addEventListener('click', (e) => { e.stopPropagation(); switchContentPanel('panelContact'); });
+            btnSetting.addEventListener('click', (e) => { e.stopPropagation(); switchContentPanel('panelSetting'); });
+
+            // 页面加载初始化
+            window.addEventListener('load', () => {
+                const winW = document.documentElement.clientWidth;
+                const winH = document.documentElement.clientHeight;
+                const safeBottom = utils.getSafeBottom();
+                floatBtn.style.left = `${winW - 60 - 20}px`;
+                floatBtn.style.top = `${winH - 60 - safeBottom - 20}px`;
+                renderNotice();
+                
+                // 连接状态提示
+                ws.onopen = () => {
+                    console.log('✅ 接收端已连接服务器');
+                };
+                ws.onerror = (err) => {
+                    alert(`❌ 接收端连接失败：${err.message}\n请刷新页面重试`);
+                };
+            });
+
+            // 窗口 resize 适配
+            window.addEventListener('resize', () => {
+                const winW = document.documentElement.clientWidth;
+                const winH = document.documentElement.clientHeight;
+                const safeBottom = utils.getSafeBottom();
+                floatBtn.style.left = `${winW - 60 - 20}px`;
+                floatBtn.style.top = `${winH - 60 - safeBottom - 20}px`;
+                if (floatWindow.classList.contains('active')) {
+                    currentWindowPos = utils.checkWindowBound(currentWindowPos.left, currentWindowPos.top);
+                    floatWindow.style.left = `${currentWindowPos.left}px`;
+                    floatWindow.style.top = `${currentWindowPos.top}px`;
+                }
+            });
+
+            // HTML加载辅助函数（保留原始）
+            function loadHtmlFromLink(htmlLink) {
+                loadTip.style.display = 'block';
+                loadTip.textContent = '加载HTML中...';
+                htmlRenderIframe.style.display = 'block';
+                htmlRenderIframe.src = htmlLink;
+            }
+            function hideLoadTip() { loadTip.style.display = 'none'; }
+            function showErrorTip() { loadTip.textContent = 'HTML加载失败，请检查链接'; }
+        })();
+    </script>
+</body>
+</html>
