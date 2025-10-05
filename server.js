@@ -3,7 +3,9 @@ const express = require('express');
 const app = express();
 const httpServer = app.listen(8080);
 
-// 自定义发送端Token（防止他人乱发，已替换为“ios-notice-123”）
+// 1. 正确初始化 WebSocket 服务器实例（新增这行！）
+const wss = new WebSocket.Server({ server: httpServer });
+
 const SENDER_TOKEN = 'ios-notice-123';
 const iosReceivers = new Set();
 
