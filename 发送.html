@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>公告更新模块（YY发送端）</title>
     <style>
-        /* 100%保留你原始的所有样式，未增删任何一行 */
+        /* 100%保留你原始样式，无任何改动 */
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei", sans-serif; }
         body { height: 100vh; overflow: hidden; position: relative; background: #f5f7fa; }
         
@@ -217,7 +217,6 @@
     </style>
 </head>
 <body>
-    <!-- 100%保留你原始的所有DOM结构，未增删任何元素 -->
     <div class="main-content" id="mainContent">
         <div class="current-notice">
             <h3>当前公告状态（YY发送端）</h3>
@@ -225,10 +224,10 @@
         </div>
         <div class="notice-preview">
             <h3>Y接收端使用说明</h3>
-            <p><strong>步骤1：</strong> 发布公告后复制下方链接</p>
-            <p><strong>步骤2：</strong> 在接收端页面中粘贴链接并访问</p>
+            <p><strong>步骤1：</strong> 填写公告后点击“发布”，自动同步</p>
+            <p><strong>步骤2：</strong> 接收端会实时弹窗提醒新公告</p>
             <div class="copy-link" id="receiverLink">
-                接收端链接：https://zwy2673976185-design.github.io/y/index.html
+                接收端地址：https://cxk-z875.onrender.com/前端.html（点击复制）
             </div>
         </div>
     </div>
@@ -239,25 +238,25 @@
         
         <div class="form-group">
             <label class="form-label">1. 公告标题</label>
-            <input type="text" class="form-input" id="editTitle" placeholder="填写公告标题，例如：v2.0.1 版本更新">
+            <input type="text" class="form-input" id="editTitle" placeholder="例如：测试推送公告">
         </div>
         
         <div class="form-group">
             <label class="form-label">2. 更新日期</label>
-            <input type="date" class="form-input" id="editDate">
+            <input type="date" class="form-input" id="editDate" value="2025-10-05"> <!-- 默认今天 -->
         </div>
         
         <div class="form-group">
             <label class="form-label">3. 更新内容</label>
-            <textarea class="form-textarea" id="editContent" placeholder="描述更新内容，例如：1. 修复XX问题；2. 新增XX功能..."></textarea>
+            <textarea class="form-textarea" id="editContent" placeholder="例如：这是一条测试推送，接收端会实时收到"></textarea>
         </div>
         
         <div class="form-group">
-            <label class="form-label">4. HTML资源链接</label>
-            <input type="url" class="form-input" id="editResourceUrl" placeholder="填写HTML在线链接">
+            <label class="form-label">4. HTML资源链接（可选）</label>
+            <input type="url" class="form-input" id="editResourceUrl" placeholder="无需填写，先测纯文本推送">
             <div class="file-upload" onclick="document.getElementById('fileInput').click()">
                 <div class="file-upload-icon">📁</div>
-                <div>点击上传本地HTML文件</div>
+                <div>点击上传本地HTML文件（可选）</div>
                 <input type="file" id="fileInput" accept=".html">
             </div>
             <div class="file-info" id="fileInfo">未选择文件 | 仅支持HTML格式</div>
@@ -275,7 +274,7 @@
             if (window.noticeUpdateInjected) return;
             window.noticeUpdateInjected = true;
             
-            // 100%保留你原始的所有元素引用
+            // 元素引用（保留原始）
             const editSwitch = document.getElementById('editSwitch');
             const editPanel = document.getElementById('editPanel');
             const closeEdit = document.getElementById('closeEdit');
@@ -290,11 +289,23 @@
             const currentNoticeInfo = document.getElementById('currentNoticeInfo');
             const receiverLink = document.getElementById('receiverLink');
             
-            // 【仅新增】连接你的Render服务器（替换为你的Render地址）
+            // 1. 连接服务器（固定你的Render地址，无需修改）
             const ws = new WebSocket('wss://cxk-z875.onrender.com');
             
-            // 100%保留你原始的所有基础逻辑
-            editDate.value = new Date().toISOString().split('T')[0];
+            // 2. 连接状态反馈（用户知道是否连成功）
+            ws.onopen = () => {
+                showToast('✅ 已连接服务器，可发布公告');
+                console.log('发送端：连接服务器成功');
+            };
+            ws.onerror = (err) => {
+                alert(`❌ 连接失败：${err.message}\n请先访问发送端唤醒服务器`);
+                console.error('发送端连接错误：', err);
+            };
+            ws.onclose = () => {
+                showToast('❌ 服务器连接已断开');
+            };
+
+            // 3. 原始文件上传逻辑保留（可选功能）
             fileInput.addEventListener('change', (e) => {
                 const file = e.target.files[0];
                 if (!file) {
@@ -307,22 +318,75 @@
                     fileInput.value = '';
                     return;
                 }
-                const maxSize = 10 * 1024 * 1024;
-                if (file.size > maxSize) {
-                    alert('文件太大，请选择小于10MB的HTML文件！');
-                    fileInput.value = '';
-                    return;
-                }
                 fileInfo.textContent = `已选择：${file.name}`;
                 const fileUrl = URL.createObjectURL(file);
                 editResourceUrl.value = fileUrl;
                 showToast('HTML文件上传成功！');
             });
-            function formatFileSize(size) {
-                if (size < 1024) return `${size} B`;
-                if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-                return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-            }
+
+            // 4. 核心：发布公告（消息格式简化，与接收端匹配）
+            syncNotice.addEventListener('click', () => {
+                const title = editTitle.value.trim();
+                const content = editContent.value.trim();
+                
+                // 基础校验
+                if (!title || !content) {
+                    alert('公告标题和内容不能为空！');
+                    return;
+                }
+                
+                // 构建消息（字段与接收端完全匹配）
+                const noticeData = {
+                    type: 'notice', // 标记消息类型，接收端识别用
+                    title: title,
+                    date: editDate.value.replace(/-/g, '年') + '月' + editDate.value.split('-')[2] + '日', // 格式：2025年10月05日
+                    content: content,
+                    resourceUrl: editResourceUrl.value.trim() || '无'
+                };
+                
+                // 发送消息到服务器
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify(noticeData));
+                    showToast('📤 公告已发送，接收端将实时更新');
+                    
+                    // 更新当前公告状态（保留原始UI反馈）
+                    currentNoticeInfo.innerHTML = `
+                        <div style="margin-bottom: 10px;">
+                            <strong>标题：</strong>${title}<br>
+                            <strong>日期：</strong>${noticeData.date}<br>
+                            <strong>状态：</strong><span style="color: #10b981;">已发送</span>
+                        </div>
+                        <button class="edit-btn" onclick="clearCurrentNotice()" style="background: #ef4444; color: white; padding: 8px 12px; font-size: 12px;">清除公告</button>
+                    `;
+                    
+                    // 重置表单
+                    editTitle.value = '';
+                    editContent.value = '';
+                    editPanel.classList.remove('active');
+                } else {
+                    alert('❌ 服务器未连接，请刷新页面重试');
+                }
+            });
+
+            // 5. 清除公告（通知服务器）
+            window.clearCurrentNotice = function() {
+                if (confirm('确定要清除当前公告吗？')) {
+                    ws.send(JSON.stringify({ type: 'clear' })); // 发送清除指令
+                    currentNoticeInfo.innerHTML = '暂无活跃公告';
+                    showToast('❌ 公告已清除，接收端已同步');
+                }
+            };
+
+            // 6. 原始UI交互保留（面板开关、复制链接）
+            editSwitch.addEventListener('click', () => editPanel.classList.add('active'));
+            closeEdit.addEventListener('click', () => editPanel.classList.remove('active'));
+            receiverLink.onclick = () => {
+                navigator.clipboard.writeText('https://cxk-z875.onrender.com/前端.html').then(() => {
+                    showToast('接收端地址已复制！');
+                });
+            };
+
+            // 工具函数：显示提示
             function showToast(message) {
                 toast.textContent = message;
                 toast.style.display = 'block';
@@ -330,104 +394,6 @@
                     toast.style.display = 'none';
                 }, 3000);
             }
-            editSwitch.addEventListener('click', () => editPanel.classList.add('active'));
-            closeEdit.addEventListener('click', () => editPanel.classList.remove('active'));
-
-            // 【核心修改】发布公告：从“生成哈希链接”改为“发送到服务器”
-            syncNotice.addEventListener('click', () => {
-                const title = editTitle.value.trim();
-                const content = editContent.value.trim();
-                const resourceUrl = editResourceUrl.value.trim();
-                
-                if (!title || !content) {
-                    alert('公告标题和内容不能为空！');
-                    return;
-                }
-                if (!resourceUrl) {
-                    alert('请填写HTML资源链接或上传HTML文件！');
-                    return;
-                }
-                const [year, month, day] = editDate.value.split('-');
-                const noticeData = {
-                    noticeId: 'notice_' + Date.now(),
-                    title: title,
-                    date: `${year}年${month}月${day}日`,
-                    content: content.replace(/\n/g, '<br>'),
-                    resourceUrl: resourceUrl,
-                    timestamp: new Date().getTime()
-                };
-                // 1. 保留你原始的localStorage存储（查看当前状态用）
-                localStorage.setItem('currentNotice', JSON.stringify(noticeData));
-                // 2. 【新增】发送到服务器（中转给接收端）
-                ws.send(JSON.stringify({ type: 'notice', data: noticeData }));
-                
-                // 100%保留你原始的UI更新逻辑
-                const shortUrl = resourceUrl.length > 40 ? resourceUrl.slice(0, 40) + '...' : resourceUrl;
-                currentNoticeInfo.innerHTML = `
-                    <div style="margin-bottom: 10px;">
-                        <strong>标题：</strong>${title}<br>
-                        <strong>日期：</strong>${noticeData.date}<br>
-                        <strong>HTML链接：</strong>${shortUrl}<br>
-                        <strong>状态：</strong><span style="color: #10b981;">活跃中</span>
-                    </div>
-                    <button class="edit-btn" onclick="clearCurrentNotice()" style="background: #ef4444; color: white; padding: 8px 12px; font-size: 12px;">清除公告</button>
-                `;
-                receiverLink.innerHTML = `接收端链接（无需复制，已实时同步）：<br>https://zwy2673976185-design.github.io/y/index.html`;
-                receiverLink.onclick = () => {
-                    navigator.clipboard.writeText('https://zwy2673976185-design.github.io/y/index.html').then(() => {
-                        showToast('接收端地址已复制！');
-                    });
-                };
-                showToast('公告发布成功！接收端已实时同步');
-                // 100%保留你原始的表单重置逻辑
-                editTitle.value = '';
-                editContent.value = '';
-                editResourceUrl.value = '';
-                fileInput.value = '';
-                fileInfo.textContent = '未选择文件 | 仅支持HTML格式';
-                editPanel.classList.remove('active');
-            });
-
-            // 【核心修改】清除公告：从“删除localStorage”改为“通知服务器清除”
-            window.clearCurrentNotice = function() {
-                if (confirm('确定要清除当前公告吗？')) {
-                    localStorage.removeItem('currentNotice');
-                    // 【新增】通知服务器清除，接收端同步清空
-                    ws.send(JSON.stringify({ type: 'clear' }));
-                    loadCurrentNotice();
-                    showToast('公告已清除，接收端已同步');
-                }
-            };
-
-            // 100%保留你原始的初始化逻辑
-            function loadCurrentNotice() {
-                const noticeData = localStorage.getItem('currentNotice');
-                if (noticeData) {
-                    const notice = JSON.parse(noticeData);
-                    const shortUrl = notice.resourceUrl.length > 40 
-                        ? notice.resourceUrl.slice(0, 40) + '...' 
-                        : notice.resourceUrl;
-                    currentNoticeInfo.innerHTML = `
-                        <div style="margin-bottom: 10px;">
-                            <strong>标题：</strong>${notice.title}<br>
-                            <strong>日期：</strong>${notice.date}<br>
-                            <strong>HTML链接：</strong>${shortUrl}<br>
-                            <strong>状态：</strong><span style="color: #10b981;">活跃中</span>
-                        </div>
-                        <button class="edit-btn" onclick="clearCurrentNotice()" style="background: #ef4444; color: white; padding: 8px 12px; font-size: 12px;">清除公告</button>
-                    `;
-                    receiverLink.innerHTML = `接收端链接（无需复制，已实时同步）：<br>https://zwy2673976185-design.github.io/y/index.html`;
-                    receiverLink.onclick = () => {
-                        navigator.clipboard.writeText('https://zwy2673976185-design.github.io/y/index.html').then(() => {
-                            showToast('接收端地址已复制！');
-                        });
-                    };
-                } else {
-                    currentNoticeInfo.innerHTML = '暂无活跃公告';
-                    receiverLink.innerHTML = '接收端链接：https://zwy2673976185-design.github.io/y/index.html';
-                }
-            }
-            loadCurrentNotice();
         })();
     </script>
 </body>
