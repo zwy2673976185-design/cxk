@@ -3,18 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>刷新保留页面（悬浮窗常驻版）</title>
+    <title>更新后公告消失（JS动态版）</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei", sans-serif; }
         body { height: 100vh; overflow: hidden; position: relative; margin: 0; padding: 0; }
         
-        /* 1. 动态内容容器：初始/刷新后加载存储的页面 */
+        /* 动态内容容器：JS动态渲染页面 */
         #dynamicContent { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            z-index: 1; overflow: auto; background: #fff; /* 纯白底色 */
+            z-index: 1; overflow: auto; background: #fff; 
         }
 
-        /* 2. 悬浮球：常驻顶层 */
+        /* 悬浮球：常驻顶层 */
         .float-btn { 
             position: fixed; z-index: 9999; width: 60px; height: 60px; border-radius: 0; box-shadow: 0 3px 15px rgba(0,0,0,0.3); 
             cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform 0.2s ease; 
@@ -24,7 +24,7 @@
         }
         .float-btn:active { transform: scale(0.95); }
         
-        /* 3. 悬浮窗：核心功能 */
+        /* 悬浮窗：JS动态控制公告面板状态 */
         .float-window { 
             position: fixed; z-index: 9998; width: 300px; height: 280px; background: white; border-radius: 12px; 
             box-shadow: 0 5px 25px rgba(0,0,0,0.15); overflow: hidden; display: none; opacity: 0; transition: opacity 0.3s ease; 
@@ -59,7 +59,7 @@
         }
         .content-panel.active { display: block; }
         
-        /* 更新模块：核心元素 */
+        /* 更新模块：JS动态显示/隐藏 */
         .notice-item { padding: 10px 0; }
         .notice-title { font-size: 18px; font-weight: 600; color: #2563eb; margin-bottom: 8px; }
         .notice-time { font-size: 12px; color: #999; margin-bottom: 10px; }
@@ -71,16 +71,17 @@
         .download-btn:disabled { background: #93c5fd; cursor: not-allowed; }
         .update-btn { background: #10b981; color: white; display: block; }
         .empty-tip { text-align: center; color: #999; font-size: 14px; padding: 20px 0; }
+        .no-new-update { color: #666; font-size: 14px; text-align: center; padding: 20px 0; }
     </style>
 </head>
 <body>
-    <!-- 1. 动态内容容器：刷新后加载存储的页面 -->
+    <!-- 动态内容容器：JS动态渲染（刷新保留） -->
     <div id="dynamicContent"></div>
 
-    <!-- 2. 悬浮球：常驻 -->
+    <!-- 悬浮球：常驻 -->
     <button class="float-btn" id="floatBtn"></button>
 
-    <!-- 3. 悬浮窗：按钮顺序（1.我的 2.公告 3.联系作者 4.设置） -->
+    <!-- 悬浮窗：JS动态控制公告状态 -->
     <div class="float-window" id="floatWindow">
         <div class="window-header" id="windowHeader">
             功能面板
@@ -106,8 +107,10 @@
         </div>
         <div class="content-panel" id="panelNotice">
             <div id="noticeContainer">
+                <!-- JS动态插入：加载中/无新更新/更新内容 -->
                 <div class="empty-tip" id="defaultTip">加载更新信息中...</div>
-                <div class="notice-item" id="pushNotice"></div>
+                <div class="no-new-update" id="noNewUpdate" style="display: none;">暂无新更新，有新公告将提示</div>
+                <div class="notice-item" id="pushNotice" style="display: none;"></div>
             </div>
         </div>
         <div class="content-panel" id="panelMy">
@@ -126,16 +129,17 @@
             if (window.floatingWindowInjected) return;
             window.floatingWindowInjected = true;
 
-            // 配置项：新增“已加载页面存储键”，用于刷新保留
+            // 配置项：新增“更新完成标记”，控制公告显示/隐藏
             const config = { 
                 domain: "cxk-z875", // 替换为你的Render服务名
-                latestNoticeKey: "latestReceivedNotice", // 存储最新更新信息
-                downloadedFileKey: "downloadedFileStatus", // 存储下载状态
-                loadedPageKey: "savedLoadedPage", // 存储已加载的更新后页面（刷新保留用）
-                initHtmlContent: "" // 初始空白，无测试内容
+                latestNoticeKey: "latestReceivedNotice", // 最新更新信息
+                downloadedFileKey: "downloadedFileStatus", // 下载状态
+                loadedPageKey: "savedLoadedPage", // 已加载页面（刷新保留）
+                updateDoneKey: "isCurrentUpdateDone", // 标记：当前更新是否完成（控制公告消失）
+                initHtmlContent: "" // 初始空白
             };
 
-            // 工具函数：核心功能+页面存储/读取
+            // 工具函数：新增“更新完成标记”操作
             const utils = {
                 checkWindowBound(left, top) { 
                     const w = document.documentElement.clientWidth; 
@@ -149,31 +153,36 @@
                     const date = new Date(dateStr);
                     return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, '0')}月${String(date.getDate()).padStart(2, '0')}日`;
                 },
-                // 本地存储通用操作
                 getStorage(key) { return localStorage.getItem(key) ? JSON.parse(localStorage.getItem(key)) : null; },
                 setStorage(key, data) { localStorage.setItem(key, JSON.stringify(data)); },
-                // 文件哈希校验（新文件识别）
                 async calculateFileHash(content) {
                     const encoder = new TextEncoder();
                     const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(content));
                     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
                 },
-                // 检查是否已下载/已加载
                 isFileDownloaded(fileName, fileHash) {
                     const status = this.getStorage(config.downloadedFileKey);
                     return status && status.name === fileName && status.hash === fileHash;
                 },
-                // 读取已存储的更新后页面（刷新用）
-                getSavedLoadedPage() {
-                    return this.getStorage(config.loadedPageKey);
+                getSavedLoadedPage() { return this.getStorage(config.loadedPageKey); },
+                saveLoadedPage(pageData) { this.setStorage(config.loadedPageKey, pageData); },
+                // 标记：当前更新已完成（公告消失）
+                markUpdateDone(hash) {
+                    this.setStorage(config.updateDoneKey, { done: true, targetHash: hash });
                 },
-                // 存储更新后页面（刷新保留）
-                saveLoadedPage(pageData) {
-                    this.setStorage(config.loadedPageKey, pageData);
+                // 检查：当前更新是否完成（判断公告是否显示）
+                isUpdateDone(currentHash) {
+                    const doneInfo = this.getStorage(config.updateDoneKey);
+                    // 只有“已标记完成”且“哈希匹配（当前文件已更新）”，才隐藏公告
+                    return doneInfo && doneInfo.done && doneInfo.targetHash === currentHash;
+                },
+                // 重置：新文件推送时，重置完成标记（公告重新显示）
+                resetUpdateDone() {
+                    this.setStorage(config.updateDoneKey, { done: false, targetHash: "" });
                 }
             };
 
-            // DOM元素
+            // DOM元素：新增“无新更新”提示容器
             const dynamicContent = document.getElementById('dynamicContent');
             const floatBtn = document.getElementById('floatBtn');
             const floatWindow = document.getElementById('floatWindow');
@@ -182,29 +191,33 @@
             const btnNotice = document.getElementById('btnNotice');
             const panelNotice = document.getElementById('panelNotice');
             const defaultTip = document.getElementById('defaultTip');
-            const pushNotice = document.getElementById('pushNotice');
+            const noNewUpdate = document.getElementById('noNewUpdate'); // 无新更新提示
+            const pushNotice = document.getElementById('pushNotice'); // 公告更新内容
 
             // 全局状态
             let currentWindowPos = utils.checkWindowBound((window.innerWidth-300)/2, (window.innerHeight-280)/2);
             let currentNoticeData = utils.getStorage(config.latestNoticeKey) || null;
-            let savedLoadedPage = utils.getSavedLoadedPage() || null; // 读取已存储的页面
+            let savedLoadedPage = utils.getSavedLoadedPage() || null;
             let btnIsDragging = false, winIsDragging = false;
             let btnDragStart = null, winDragStart = null;
             let downloadInterval = null;
 
-            // 1. 初始化：优先加载存储的页面，无则空白
+            // 1. 初始化：加载存储页面+初始化公告状态
             function initPage() {
+                // 加载刷新保留的页面
                 if (savedLoadedPage && savedLoadedPage.content) {
-                    // 刷新后：加载已存储的更新后页面
                     renderDynamicHtml(savedLoadedPage.content);
-                    console.log('已加载刷新前的页面');
                 } else {
-                    // 首次打开：纯空白白板
                     dynamicContent.innerHTML = '';
                 }
+                // 初始隐藏加载提示，显示“无新更新”（若无新文件）
+                setTimeout(() => {
+                    defaultTip.style.display = 'none';
+                    updateNoticePanelStatus(); // 初始化公告面板状态
+                }, 1000);
             }
 
-            // 2. 动态渲染页面（核心不变，新增“存储标记”）
+            // 2. 核心：JS动态渲染页面（不变）
             function renderDynamicHtml(htmlContent) {
                 if (!htmlContent) return;
                 dynamicContent.innerHTML = '';
@@ -212,18 +225,15 @@
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = htmlContent;
 
-                // 插入样式
                 tempDiv.querySelectorAll('style').forEach(style => {
                     dynamicContent.appendChild(style.cloneNode(true));
                 });
 
-                // 插入页面结构
                 const bodyContent = tempDiv.querySelector('body')?.innerHTML || tempDiv.innerHTML;
                 const wrapper = document.createElement('div');
                 wrapper.innerHTML = bodyContent;
                 dynamicContent.appendChild(wrapper);
 
-                // 执行脚本
                 tempDiv.querySelectorAll('script').forEach(oldScript => {
                     const newScript = document.createElement('script');
                     oldScript.src ? (newScript.src = oldScript.src) : (newScript.textContent = oldScript.textContent);
@@ -231,7 +241,7 @@
                 });
             }
 
-            // 3. WebSocket：常驻连接，新文件提示
+            // 3. WebSocket：新文件推送→重置完成标记→公告显示
             let ws;
             const RECONNECT_DELAY = 1000;
             function initWebSocket() {
@@ -253,15 +263,16 @@
                             if (isNewFile) {
                                 currentNoticeData = newData;
                                 utils.setStorage(config.latestNoticeKey, newData);
-                                renderUpdatePanel();
-                                notifyNewUpdate();
+                                utils.resetUpdateDone(); // 关键：新文件→重置完成标记→公告显示
+                                updateNoticePanelStatus(); // 刷新公告面板
+                                notifyNewUpdate(); // 提示新更新
                             }
                         }
                     } catch (err) { console.error('解析更新失败：', err); }
                 };
             }
 
-            // 4. 拉取最新更新：避免刷新后重复提示旧更新
+            // 4. 拉取最新更新：同步公告状态（新文件显示，旧文件隐藏）
             async function fetchLatestNotice() {
                 try {
                     const res = await fetch(`https://${config.domain}.onrender.com/getLatestAnnouncement`);
@@ -273,41 +284,58 @@
                         result.data.file.hash = fileHash;
                         const isNewFile = !utils.isFileDownloaded(result.data.file.name, fileHash);
 
-                        // 仅新文件更新状态，旧文件（已加载的）不重复处理
+                        currentNoticeData = result.data;
+                        utils.setStorage(config.latestNoticeKey, result.data);
+
+                        // 新文件→重置标记；旧文件→保持标记（已完成则隐藏）
                         if (isNewFile) {
-                            currentNoticeData = result.data;
-                            utils.setStorage(config.latestNoticeKey, result.data);
-                        } else {
-                            // 旧文件：同步状态，避免面板显示异常
-                            currentNoticeData = result.data;
+                            utils.resetUpdateDone();
                         }
-                        renderUpdatePanel();
                     } else {
-                        defaultTip.textContent = '暂无更新';
+                        currentNoticeData = null;
                     }
+                    updateNoticePanelStatus(); // 同步公告面板显示状态
                 } catch (err) {
                     console.error('拉取更新失败：', err);
-                    defaultTip.textContent = '加载更新失败，稍后重试';
-                    setTimeout(fetchLatestNotice, 10000);
+                    defaultTip.style.display = 'none';
+                    noNewUpdate.style.display = 'block';
                 }
             }
 
-            // 5. 渲染更新面板：状态与已加载页面同步
-            function renderUpdatePanel() {
+            // 5. 核心：JS动态控制公告面板显示/隐藏（关键逻辑）
+            function updateNoticePanelStatus() {
+                // 隐藏所有基础提示
+                defaultTip.style.display = 'none';
+                noNewUpdate.style.display = 'none';
+                pushNotice.style.display = 'none';
+
+                // 情况1：无任何公告文件→显示“无新更新”
                 if (!currentNoticeData?.file) {
-                    defaultTip.style.display = 'block';
-                    pushNotice.style.display = 'none';
+                    noNewUpdate.style.display = 'block';
                     return;
                 }
 
-                const { name: fileName, hash, content } = currentNoticeData.file;
-                const isDownloaded = utils.isFileDownloaded(fileName, hash);
-                // 判断当前存储的页面是否为该文件（避免刷新后面板状态错乱）
-                const isCurrentLoaded = savedLoadedPage && savedLoadedPage.hash === hash;
+                const { hash } = currentNoticeData.file;
+                const isDownloaded = utils.isFileDownloaded(currentNoticeData.file.name, hash);
+                const isDone = utils.isUpdateDone(hash); // 检查：当前更新是否完成
 
+                // 情况2：更新已完成（已加载页面）→隐藏公告内容，显示“无新更新”
+                if (isDone) {
+                    noNewUpdate.style.display = 'block';
+                    return;
+                }
+
+                // 情况3：有公告文件（未完成更新）→显示下载/更新内容
+                pushNotice.style.display = 'block';
+                renderUpdateContent(isDownloaded, hash);
+            }
+
+            // 渲染公告更新内容（JS动态生成HTML）
+            function renderUpdateContent(isDownloaded, hash) {
+                const { name: fileName, date } = currentNoticeData.file;
                 pushNotice.innerHTML = `
                     <div class="notice-title">更新</div>
-                    <div class="notice-time">更新时间：${utils.formatTime(currentNoticeData.date || new Date())}</div>
+                    <div class="notice-time">更新时间：${utils.formatTime(date || new Date())}</div>
                     <div class="progress-actions">
                         <div class="download-progress" id="downloadProgress">
                             <div class="progress-bar" id="progressBar" style="width: ${isDownloaded ? '100%' : '0%'}"></div>
@@ -315,20 +343,18 @@
                         <button class="action-btn ${isDownloaded ? 'update-btn' : 'download-btn'}" 
                                 id="downloadBtn" 
                                 onclick="${isDownloaded ? 'handleUpdate()' : 'handleDownload()'}">
-                            ${isCurrentLoaded ? '重新加载' : (isDownloaded ? '更新' : '下载')}
+                            ${isDownloaded ? '更新' : '下载'}
                         </button>
                     </div>
                 `;
-
-                defaultTip.style.display = 'none';
-                pushNotice.style.display = 'block';
             }
 
-            // 6. 下载逻辑：不变，下载后标记状态
+            // 6. 下载逻辑（不变）
             window.handleDownload = function() {
+                if (!currentNoticeData?.file) return;
+                const { name: fileName, content, hash } = currentNoticeData.file;
                 const progressBar = document.getElementById('progressBar');
                 const downloadBtn = document.getElementById('downloadBtn');
-                const { name: fileName, content, hash } = currentNoticeData.file;
 
                 if (!progressBar || !downloadBtn || !content) return;
                 if (downloadInterval) clearInterval(downloadInterval);
@@ -348,7 +374,6 @@
                         downloadBtn.className = 'action-btn update-btn';
                         downloadBtn.onclick = handleUpdate;
                         downloadBtn.disabled = false;
-                        // 存储下载状态
                         utils.setStorage(config.downloadedFileKey, {
                             name: fileName,
                             hash: hash,
@@ -358,37 +383,36 @@
                 }, 100);
             };
 
-            // 7. 更新逻辑：新增“存储页面到localStorage”，刷新保留
+            // 7. 更新逻辑：完成后标记→公告消失
             window.handleUpdate = function() {
-                if (!confirm('确认更新/重新加载？刷新后仍保留此页面')) return;
+                if (!currentNoticeData?.file) return;
+                if (!confirm('确认更新？更新后公告将隐藏，新公告会重新提示')) return;
 
                 try {
                     const { name: fileName, content, hash } = currentNoticeData.file;
                     if (!content) throw new Error('无最新页面内容');
 
-                    // 渲染新页面
+                    // 1. 动态渲染新页面
                     renderDynamicHtml(content);
-                    // 关键：存储页面到localStorage（刷新后读取）
-                    const pageData = {
-                        name: fileName,
-                        hash: hash, // 用哈希标识，避免重复存储
-                        content: content,
-                        loadedTime: Date.now()
-                    };
+                    // 2. 存储页面（刷新保留）
+                    const pageData = { name: fileName, hash: hash, content: content, loadedTime: Date.now() };
                     utils.saveLoadedPage(pageData);
-                    savedLoadedPage = pageData; // 更新全局状态，避免面板错乱
+                    savedLoadedPage = pageData;
+                    // 3. 关键：标记更新完成→公告消失
+                    utils.markUpdateDone(hash);
+                    // 4. 实时隐藏公告，显示“无新更新”
+                    updateNoticePanelStatus();
 
-                    alert('更新成功！刷新页面仍会保留此页面');
-                    renderUpdatePanel(); // 刷新面板状态（显示“重新加载”）
+                    alert('更新成功！公告已隐藏，有新公告将自动提示');
                 } catch (err) {
                     alert(`操作失败：${err.message}`);
                 }
             };
 
-            // 8. 新文件提示：不变
+            // 8. 新文件提示（不变）
             function notifyNewUpdate() {
                 if (Notification.permission === 'granted') {
-                    new Notification('收到新更新', {
+                    new Notification('收到新公告', {
                         body: `更新时间：${utils.formatTime(currentNoticeData.date)}`,
                         icon: 'https://img.icons8.com/ios-glyphs/30/2563eb/announcement--v1.png'
                     });
@@ -396,26 +420,30 @@
                     Notification.requestPermission().then(perm => perm === 'granted' && notifyNewUpdate());
                 }
 
-                alert('收到新更新！点击悬浮窗下载');
+                alert('收到新公告！点击悬浮窗查看');
                 floatWindow.classList.add('active');
                 floatWindow.style.left = `${currentWindowPos.left}px`;
                 floatWindow.style.top = `${currentWindowPos.top}px`;
-                renderUpdatePanel();
+                updateNoticePanelStatus();
             }
 
-            // 9. 面板切换：不变
+            // 9. 面板切换：打开公告面板时，同步状态
             function switchPanel(targetId) {
                 document.querySelectorAll('.content-panel').forEach(panel => {
                     panel.classList.remove('active');
                     panel.style.display = 'none';
                 });
                 document.getElementById(targetId).classList.add('active');
-                document.getElementById(targetId).classList.add('active');
                 document.getElementById(targetId).style.display = 'block';
                 modalBack.style.display = 'block';
+
+                // 打开公告面板时，强制同步状态（确保显示正确）
+                if (targetId === 'panelNotice') {
+                    updateNoticePanelStatus();
+                }
             }
 
-            // 悬浮球拖拽：不变
+            // 悬浮球/窗交互（不变）
             floatBtn.addEventListener('touchstart', (e) => {
                 const touch = e.touches[0];
                 btnDragStart = { x: touch.clientX, y: touch.clientY, rect: floatBtn.getBoundingClientRect() };
@@ -435,18 +463,15 @@
                 }
             }, { passive: false });
 
-            // 悬浮球点击：不变
             floatBtn.addEventListener('click', () => {
                 if (btnIsDragging) return;
                 floatWindow.classList.toggle('active');
                 if (floatWindow.classList.contains('active')) {
                     floatWindow.style.left = `${currentWindowPos.left}px`;
                     floatWindow.style.top = `${currentWindowPos.top}px`;
-                    renderUpdatePanel();
                 }
             });
 
-            // 悬浮窗拖拽：不变
             document.getElementById('windowHeader').addEventListener('touchstart', (e) => {
                 if (!floatWindow.classList.contains('active')) return;
                 const touch = e.touches[0];
@@ -467,7 +492,7 @@
                 }
             }, { passive: false });
 
-            // 面板按钮点击：不变
+            // 面板按钮点击（打开公告面板同步状态）
             modalBack.addEventListener('click', () => {
                 document.querySelectorAll('.content-panel').forEach(panel => {
                     panel.classList.remove('active');
@@ -493,7 +518,6 @@
                 switchPanel('panelSetting');
             });
 
-            // 窗口适配：不变
             window.addEventListener('resize', () => {
                 if (floatWindow.classList.contains('active')) {
                     currentWindowPos = utils.checkWindowBound(currentWindowPos.left, currentWindowPos.top);
@@ -502,7 +526,7 @@
                 }
             });
 
-            // 启动：优先加载存储的页面，再启动WebSocket
+            // 启动：JS动态初始化
             document.addEventListener('DOMContentLoaded', () => {
                 initPage();
                 initWebSocket();
