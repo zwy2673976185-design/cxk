@@ -6,7 +6,7 @@ const app = express();
 
 const port = process.env.PORT || 3000;
 
-// 跨域配置：允许Render前端域名访问（替换为你的实际Render域名）
+// 跨域配置：替换为你的Render服务域名（如cxk-z875）
 app.use(cors({
   origin: "https://cxk-z875.onrender.com",
   methods: ["GET", "POST"],
@@ -14,11 +14,14 @@ app.use(cors({
 }));
 app.use(express.static('./'));
 
-// 存储目录改为Render允许写入的临时目录
+// 存储目录：Render允许写入的临时目录
 const updateDir = '/tmp/latest_update'; 
 const latestFilePath = `${updateDir}/latest_update.html`;
 const fileInfoPath = `${updateDir}/file_info.json`;
-if (!fs.existsSync(updateDir)) fs.mkdirSync(updateDir);
+// 递归创建目录（确保多级目录也能生成）
+if (!fs.existsSync(updateDir)) {
+  fs.mkdirSync(updateDir, { recursive: true });
+}
 
 const upload = multer({ 
   dest: updateDir + '/', 
@@ -27,6 +30,7 @@ const upload = multer({
 
 // 接口1：接收文件上传（自动覆盖旧文件）
 app.post('/uploadNewFile', upload.single('updateHtml'), (req, res) => {
+  console.log('接收到文件上传请求，临时文件路径：', req.file?.path);
   try {
     fs.renameSync(req.file.path, latestFilePath);
     const fileInfo = {
@@ -37,6 +41,7 @@ app.post('/uploadNewFile', upload.single('updateHtml'), (req, res) => {
     fs.writeFileSync(fileInfoPath, JSON.stringify(fileInfo));
     res.send({ success: true, msg: '文件推送成功' });
   } catch (err) {
+    console.error('上传失败原因：', err);
     res.send({ success: false, msg: '推送失败：' + err.message });
   }
 });
