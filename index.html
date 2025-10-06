@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>更新面板（稳定版）</title>
+    <title>更新面板（跨页面版）</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei", sans-serif; }
         body { height: 100vh; overflow: hidden; position: relative; background: #f5f7fa; }
@@ -224,6 +224,7 @@
             let btnDragStart = null, winDragStart = null;
             let downloadInterval = null; // 用于管理下载进度的定时器
 
+            // 全局WebSocket连接管理
             let ws;
             let reconnectCount = 0;
             const RECONNECT_DELAY = 1000;
@@ -513,6 +514,32 @@
                     floatWindow.style.top = `${currentWindowPos.top}px`;
                 }
             });
+
+            // 全局路由监听（模拟SPA）
+            window.addEventListener('popstate', (e) => {
+                const path = window.location.pathname;
+                switch (path) {
+                    case '/page2':
+                        // 加载页面2内容
+                        document.body.innerHTML = `
+                            <h1>页面2</h1>
+                            <button onclick="history.back()">返回</button>
+                        `;
+                        break;
+                    default:
+                        // 加载主页内容
+                        document.body.innerHTML = `
+                            <h1>主页</h1>
+                            <button onclick="history.pushState(null, '', '/page2')">前往页面2</button>
+                        `;
+                        break;
+                }
+            });
+
+            // 初始化路由
+            if (window.location.pathname === '/') {
+                history.replaceState(null, '', '/home');
+            }
         })();
     </script>
 </body>
