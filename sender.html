@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>更新文件发送端</title>
+  <style>
+    .container { max-width: 600px; margin: 50px auto; padding: 20px; border: 1px solid #eee; border-radius: 8px; }
+    .title { color: #2d7dff; font-size: 18px; margin-bottom: 20px; }
+    .file-box { margin: 15px 0; padding: 10px; border: 1px dashed #ccc; cursor: pointer; }
+    .file-box:hover { border-color: #2d7dff; }
+    #fileInfo { color: #666; margin: 10px 0; }
+    #uploadBtn { background: #2d7dff; color: #fff; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; }
+    #uploadBtn:disabled { background: #ccc; cursor: not-allowed; }
+    .progress { height: 8px; background: #f5f5f5; border-radius: 4px; margin: 15px 0; overflow: hidden; }
+    .progress-bar { height: 100%; background: #2d7dff; width: 0%; transition: width 0.3s; }
+    .link-area { margin: 20px 0; padding: 15px; background: #f9f9f9; border-radius: 4px; }
+    #receiveLink { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin: 10px 0; }
+    #copyBtn { background: #4cae4c; color: #fff; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
+    #status { margin-top: 15px; color: #333; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="title">📤 更新文件发送（新文件自动覆盖旧文件）</div>
+    
+    <!-- 1. 文件选择区 -->
+    <div class="file-box" onclick="document.getElementById('fileInput').click()">
+      点击选择要推送的HTML更新文件（仅支持.html格式）
+      <input type="file" id="fileInput" accept=".html" style="display: none;" onchange="showFileName()">
+    </div>
+    <div id="fileInfo">未选择文件</div>
+
+    <!-- 2. 上传按钮+进度条 -->
+    <button id="uploadBtn" disabled onclick="uploadFile()">开始推送文件</button>
+    <div class="progress">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+
+    <!-- 3. 接收端链接（生成后可复制给前端） -->
+    <div class="link-area">
+      <div>前端接收链接（复制后打开即可看到公告）：</div>
+      <input type="text" id="receiveLink" readonly>
+      <button id="copyBtn" onclick="copyLink()">复制链接</button>
+    </div>
+
+    <!-- 4. 操作状态提示 -->
+    <div id="status">提示：推送后，前端未更新前公告不会消失；上传新文件会自动覆盖旧的</div>
+  </div>
+
+<script>
+// 服务器基础配置（替换成你的服务器IP和端口，和之前的后端一致）
+const serverIP = "你的服务器IP";
+const serverPort = "3000";
+const receiveLink = `http://${serverIP}:${serverPort}/index.html`; // 前端接收页面链接
+document.getElementById('receiveLink').value = receiveLink; // 页面加载时生成链接
+
+// 1. 显示选择的文件名
+function showFileName() {
+  const fileInput = document.getElementById('fileInput');
+  const fileInfo = document.getElementById('fileInfo');
+  const uploadBtn = document.getElementById('uploadBtn');
+  
+  if (fileInput.files[0]) {
+    const file = fileInput.files[0];
+    if (file.type !== 'text/html' && !file.name.endsWith('.html')) {
+      fileInfo.textContent = `❌ 错误：仅支持.html格式文件`;
+      uploadBtn.disabled = true;
+    } else {
+      fileInfo.textContent = `已选择：${file.name}（大小：${(file.size/1024).toFixed(2)}KB）`;
+      uploadBtn.disabled = false;
+    }
+  } else {
+    fileInfo.textContent = "未选择文件";
+    uploadBtn.disabled = true;
+  }
+}
+
+// 2. 推送文件到服务器（对接后端接口，自动覆盖旧文件）
+function uploadFile() {
+  const fileInput = document.getElementById('fileInput');
+  const file = fileInput.files[0];
+  const progressBar = document.getElementById('progressBar');
+  const status = document.getElementById('status');
+  
+  const formData = new FormData();
+  formData.append('updateHtml', file); // 和后端接口参数一致
+
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', `http://${serverIP}:${serverPort}/uploadNewFile`); // 对接后端上传接口
+
+  // 实时更新上传进度
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) {
+      const progress = (e.loaded / e.total) * 100;
+      progressBar.style.width = `${progress}%`;
+      status.textContent = `推送中：${progress.toFixed(0)}%`;
+    }
+  };
+
+  // 上传完成提示
+  xhr.onload = () => {
+    const res = JSON.parse(xhr.responseText);
+    if (res.success) {
+      progressBar.style.width = "100%";
+      status.textContent = `✅ 推送成功！前端打开链接即可看到公告（未更新前不会消失）`;
+    } else {
+      status.textContent = `❌ 推送失败：${res.msg}`;
+    }
+  };
+
+  xhr.onerror = () => {
+    status.textContent = `❌ 推送失败：无法连接服务器，请检查IP和端口`;
+  };
+
+  xhr.send(formData);
+}
+
+// 3. 复制接收端链接
+function copyLink() {
+  const linkInput = document.getElementById('receiveLink');
+  linkInput.select();
+  document.execCommand('copy');
+  document.getElementById('status').textContent = `✅ 链接已复制！前端打开即可接收`;
+}
+</script>
+</body>
+</html>
