@@ -22,38 +22,32 @@
   <div class="container">
     <div class="title">📤 更新文件发送（新文件自动覆盖旧文件）</div>
     
-    <!-- 1. 文件选择区 -->
     <div class="file-box" onclick="document.getElementById('fileInput').click()">
       点击选择要推送的HTML更新文件（仅支持.html格式）
       <input type="file" id="fileInput" accept=".html" style="display: none;" onchange="showFileName()">
     </div>
     <div id="fileInfo">未选择文件</div>
 
-    <!-- 2. 上传按钮+进度条 -->
     <button id="uploadBtn" disabled onclick="uploadFile()">开始推送文件</button>
     <div class="progress">
       <div class="progress-bar" id="progressBar"></div>
     </div>
 
-    <!-- 3. 接收端链接（生成后可复制给前端） -->
     <div class="link-area">
       <div>前端接收链接（复制后打开即可看到公告）：</div>
       <input type="text" id="receiveLink" readonly>
       <button id="copyBtn" onclick="copyLink()">复制链接</button>
     </div>
 
-    <!-- 4. 操作状态提示 -->
     <div id="status">提示：推送后，前端未更新前公告不会消失；上传新文件会自动覆盖旧的</div>
   </div>
 
 <script>
-// 服务器基础配置（替换成你的服务器IP和端口，和之前的后端一致）
-const serverIP = "你的服务器IP";
-const serverPort = "3000";
-const receiveLink = `http://${serverIP}:${serverPort}/index.html`; // 前端接收页面链接
-document.getElementById('receiveLink').value = receiveLink; // 页面加载时生成链接
+// 替换为你的Render服务域名（如你的服务名为cxk-z875，则无需修改）
+const renderDomain = "cxk-z875"; 
+const receiveLink = `https://${renderDomain}.onrender.com/index.html`;
+document.getElementById('receiveLink').value = receiveLink;
 
-// 1. 显示选择的文件名
 function showFileName() {
   const fileInput = document.getElementById('fileInput');
   const fileInfo = document.getElementById('fileInfo');
@@ -74,7 +68,6 @@ function showFileName() {
   }
 }
 
-// 2. 推送文件到服务器（对接后端接口，自动覆盖旧文件）
 function uploadFile() {
   const fileInput = document.getElementById('fileInput');
   const file = fileInput.files[0];
@@ -82,12 +75,11 @@ function uploadFile() {
   const status = document.getElementById('status');
   
   const formData = new FormData();
-  formData.append('updateHtml', file); // 和后端接口参数一致
+  formData.append('updateHtml', file);
 
   const xhr = new XMLHttpRequest();
-  xhr.open('POST', `http://${serverIP}:${serverPort}/uploadNewFile`); // 对接后端上传接口
+  xhr.open('POST', `https://${renderDomain}.onrender.com/uploadNewFile`);
 
-  // 实时更新上传进度
   xhr.upload.onprogress = (e) => {
     if (e.lengthComputable) {
       const progress = (e.loaded / e.total) * 100;
@@ -96,25 +88,23 @@ function uploadFile() {
     }
   };
 
-  // 上传完成提示
   xhr.onload = () => {
     const res = JSON.parse(xhr.responseText);
     if (res.success) {
       progressBar.style.width = "100%";
-      status.textContent = `✅ 推送成功！前端打开链接即可看到公告（未更新前不会消失）`;
+      status.textContent = `✅ 推送成功！前端打开链接即可看到公告`;
     } else {
       status.textContent = `❌ 推送失败：${res.msg}`;
     }
   };
 
   xhr.onerror = () => {
-    status.textContent = `❌ 推送失败：无法连接服务器，请检查IP和端口`;
+    status.textContent = `❌ 推送失败：无法连接服务器，请检查域名是否正确`;
   };
 
   xhr.send(formData);
 }
 
-// 3. 复制接收端链接
 function copyLink() {
   const linkInput = document.getElementById('receiveLink');
   linkInput.select();
