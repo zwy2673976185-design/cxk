@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>更新面板（按钮切换修复版）</title>
+    <title>更新面板（稳定版）</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei", sans-serif; }
         body { height: 100vh; overflow: hidden; position: relative; background: #f5f7fa; }
@@ -83,7 +83,7 @@
             background: #93c5fd; cursor: not-allowed; 
         }
         .update-btn { 
-            background: #10b981; color: white; box-shadow: 0 1px 3px rgba(16, 185, 129, 0.2); display: block; /* 确保显示 */
+            background: #10b981; color: white; box-shadow: 0 1px 3px rgba(16, 185, 129, 0.2); display: block; 
         }
         .empty-tip { 
             text-align: center; 
@@ -146,7 +146,8 @@
 
             const config = { 
                 domain: "cxk-z875", // 你的Render服务名，必须和后端一致
-                latestNoticeKey: "latestReceivedNotice" // localStorage存储最新公告的key
+                latestNoticeKey: "latestReceivedNotice", // 存储最新公告
+                downloadedFileKey: "downloadedFileStatus" // 存储下载状态
             };
 
             const utils = {
@@ -178,6 +179,21 @@
                 },
                 saveLatestNoticeToStorage(notice) {
                     localStorage.setItem(config.latestNoticeKey, JSON.stringify(notice));
+                },
+                // 标记文件下载状态（包含文件名和时间）
+                markFileAsDownloaded(fileName) {
+                    localStorage.setItem(config.downloadedFileKey, JSON.stringify({
+                        name: fileName,
+                        time: new Date().getTime()
+                    }));
+                },
+                // 检查文件是否已下载（通过文件名和时间判断）
+                isFileDownloaded(fileName) {
+                    const status = localStorage.getItem(config.downloadedFileKey);
+                    if (!status) return false;
+                    const { name, time } = JSON.parse(status);
+                    // 仅当文件名匹配且下载时间在有效范围内（这里设为1天）才视为已下载
+                    return name === fileName && (new Date().getTime() - time) < 86400000;
                 }
             };
 
@@ -197,6 +213,7 @@
             let currentWindowPos = utils.getDefaultWindowPos();
             let currentNoticeData = utils.getLatestNoticeFromStorage() || null;
             let btnDragStart = null, winDragStart = null;
+            let downloadInterval = null; // 用于管理下载进度的定时器
 
             let ws;
             let reconnectCount = 0;
@@ -231,10 +248,16 @@
                     try {
                         const newData = JSON.parse(e.data);
                         if (newData.type === 'notice') {
-                            currentNoticeData = newData;
-                            utils.saveLatestNoticeToStorage(newData);
-                            autoRenderNotice();
-                            autoNotifyAndSwitchPanel();
+                            // 过滤重复通知（仅当公告ID或时间变化时才更新）
+                            const isDuplicate = currentNoticeData && 
+                                currentNoticeData.date === newData.date && 
+                                currentNoticeData.title === newData.title;
+                            if (!isDuplicate) {
+                                currentNoticeData = newData;
+                                utils.saveLatestNoticeToStorage(newData);
+                                autoRenderNotice();
+                                autoNotifyAndSwitchPanel();
+                            }
                         }
                     } catch (err) {
                         console.error('解析更新数据失败：', err);
@@ -249,9 +272,15 @@
 
                     const result = await res.json();
                     if (result.success && result.data) {
-                        currentNoticeData = result.data;
-                        utils.saveLatestNoticeToStorage(result.data);
-                        autoRenderNotice();
+                        // 过滤重复数据
+                        const isDuplicate = currentNoticeData && 
+                            currentNoticeData.date === result.data.date && 
+                            currentNoticeData.title === result.data.title;
+                        if (!isDuplicate) {
+                            currentNoticeData = result.data;
+                            utils.saveLatestNoticeToStorage(result.data);
+                            autoRenderNotice();
+                        }
                     } else if (!currentNoticeData) {
                         defaultTip.style.display = 'block';
                         pushNotice.style.display = 'none';
@@ -276,7 +305,9 @@
                     return;
                 }
 
-                // 固定标题为“更新”，保留原UI布局
+                const fileName = currentNoticeData.file?.name || 'index.html';
+                const isDownloaded = utils.isFileDownloaded(fileName);
+
                 const noticeHtml = `
                     <div class="notice-title">更新</div>
                     <div class="notice-time">更新时间：${utils.formatTime(currentNoticeData.date || new Date())}</div>
@@ -284,7 +315,11 @@
                         <div class="download-progress" id="downloadProgress">
                             <div class="progress-bar" id="progressBar"></div>
                         </div>
-                        <button class="action-btn download-btn" id="downloadBtn" onclick="startDownload()">下载</button>
+                        <button class="action-btn ${isDownloaded ? 'update-btn' : 'download-btn'}" 
+                                id="downloadBtn" 
+                                onclick="${isDownloaded ? 'markAsUpdated()' : 'startDownload()'}">
+                            ${isDownloaded ? '更新' : '下载'}
+                        </button>
                     </div>
                 `;
 
@@ -297,8 +332,12 @@
                 const downloadProgress = document.getElementById('downloadProgress');
                 const progressBar = document.getElementById('progressBar');
                 const downloadBtn = document.getElementById('downloadBtn');
+                const fileName = currentNoticeData?.file?.name || 'index.html';
 
                 if (!downloadProgress || !progressBar || !downloadBtn || !currentNoticeData?.file) return;
+
+                // 清除之前的定时器，避免卡住
+                if (downloadInterval) clearInterval(downloadInterval);
 
                 downloadBtn.textContent = '下载中';
                 downloadBtn.disabled = true;
@@ -310,11 +349,12 @@
                     progressBar.style.width = `${progress}%`;
                     if (progress >= 100) {
                         clearInterval(downloadInterval);
-                        // 下载完成：切换为“更新”按钮
                         downloadBtn.textContent = '更新';
                         downloadBtn.className = 'action-btn update-btn';
                         downloadBtn.onclick = markAsUpdated;
                         downloadBtn.disabled = false;
+                        // 标记文件为已下载
+                        utils.markFileAsDownloaded(fileName);
                     }
                 }, 100);
             };
@@ -324,6 +364,7 @@
 
                 try {
                     let fileContent = currentNoticeData?.file?.content;
+                    const fileName = currentNoticeData?.file?.name || 'index.html';
 
                     if (!fileContent) {
                         alert('🔍 正在拉取最新内容...');
@@ -333,7 +374,7 @@
                     }
 
                     document.documentElement.innerHTML = fileContent;
-                    alert('✅ 更新成功！当前已是最新内容');
+                    alert(`✅ 更新成功！当前已是${fileName}最新版`);
                 } catch (err) {
                     alert(`❌ 更新失败：${err.message}，请稍等重试`);
                 }
