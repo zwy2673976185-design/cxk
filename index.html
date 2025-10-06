@@ -180,20 +180,29 @@
                 saveLatestNoticeToStorage(notice) {
                     localStorage.setItem(config.latestNoticeKey, JSON.stringify(notice));
                 },
-                // 标记文件下载状态（包含文件名和时间）
-                markFileAsDownloaded(fileName) {
+                // 标记文件下载状态（包含文件名和哈希）
+                markFileAsDownloaded(fileName, fileHash) {
                     localStorage.setItem(config.downloadedFileKey, JSON.stringify({
                         name: fileName,
+                        hash: fileHash,
                         time: new Date().getTime()
                     }));
                 },
-                // 检查文件是否已下载（通过文件名和时间判断）
-                isFileDownloaded(fileName) {
+                // 检查文件是否已下载（通过文件名和哈希判断）
+                isFileDownloaded(fileName, fileHash) {
                     const status = localStorage.getItem(config.downloadedFileKey);
                     if (!status) return false;
-                    const { name, time } = JSON.parse(status);
-                    // 仅当文件名匹配且下载时间在有效范围内（这里设为1天）才视为已下载
-                    return name === fileName && (new Date().getTime() - time) < 86400000;
+                    const { name, hash } = JSON.parse(status);
+                    return name === fileName && hash === fileHash;
+                },
+                // 计算文件内容的SHA-256哈希
+                async calculateFileHash(fileContent) {
+                    const encoder = new TextEncoder();
+                    const data = encoder.encode(fileContent);
+                    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                    return Array.from(new Uint8Array(hashBuffer))
+                        .map(b => b.toString(16).padStart(2, '0'))
+                        .join('');
                 }
             };
 
@@ -244,15 +253,17 @@
                     }
                 };
 
-                ws.onmessage = (e) => {
+                ws.onmessage = async (e) => {
                     try {
                         const newData = JSON.parse(e.data);
                         if (newData.type === 'notice') {
-                            // 过滤重复通知（仅当公告ID或时间变化时才更新）
-                            const isDuplicate = currentNoticeData && 
-                                currentNoticeData.date === newData.date && 
-                                currentNoticeData.title === newData.title;
-                            if (!isDuplicate) {
+                            // 计算新文件的哈希值
+                            const newFileHash = await utils.calculateFileHash(newData.file.content);
+                            newData.file.hash = newFileHash;
+
+                            // 检查是否为新文件
+                            const isNewFile = !utils.isFileDownloaded(newData.file.name, newFileHash);
+                            if (isNewFile) {
                                 currentNoticeData = newData;
                                 utils.saveLatestNoticeToStorage(newData);
                                 autoRenderNotice();
@@ -272,11 +283,13 @@
 
                     const result = await res.json();
                     if (result.success && result.data) {
-                        // 过滤重复数据
-                        const isDuplicate = currentNoticeData && 
-                            currentNoticeData.date === result.data.date && 
-                            currentNoticeData.title === result.data.title;
-                        if (!isDuplicate) {
+                        // 计算新文件的哈希值
+                        const newFileHash = await utils.calculateFileHash(result.data.file.content);
+                        result.data.file.hash = newFileHash;
+
+                        // 检查是否为新文件
+                        const isNewFile = !utils.isFileDownloaded(result.data.file.name, newFileHash);
+                        if (isNewFile) {
                             currentNoticeData = result.data;
                             utils.saveLatestNoticeToStorage(result.data);
                             autoRenderNotice();
@@ -305,8 +318,8 @@
                     return;
                 }
 
-                const fileName = currentNoticeData.file?.name || 'index.html';
-                const isDownloaded = utils.isFileDownloaded(fileName);
+                const { fileName, hash } = currentNoticeData.file;
+                const isDownloaded = utils.isFileDownloaded(fileName, hash);
 
                 const noticeHtml = `
                     <div class="notice-title">更新</div>
@@ -328,11 +341,11 @@
                 pushNotice.style.display = 'block';
             }
 
-            window.startDownload = function() {
+            window.startDownload = async function() {
                 const downloadProgress = document.getElementById('downloadProgress');
                 const progressBar = document.getElementById('progressBar');
                 const downloadBtn = document.getElementById('downloadBtn');
-                const fileName = currentNoticeData?.file?.name || 'index.html';
+                const { fileName, content, hash } = currentNoticeData.file;
 
                 if (!downloadProgress || !progressBar || !downloadBtn || !currentNoticeData?.file) return;
 
@@ -353,8 +366,8 @@
                         downloadBtn.className = 'action-btn update-btn';
                         downloadBtn.onclick = markAsUpdated;
                         downloadBtn.disabled = false;
-                        // 标记文件为已下载
-                        utils.markFileAsDownloaded(fileName);
+                        // 标记文件为已下载（包含文件名和哈希）
+                        utils.markFileAsDownloaded(fileName, hash);
                     }
                 }, 100);
             };
@@ -363,17 +376,8 @@
                 if (!confirm('⚠️ 确认更新？更新后页面将替换为最新版')) return;
 
                 try {
-                    let fileContent = currentNoticeData?.file?.content;
-                    const fileName = currentNoticeData?.file?.name || 'index.html';
-
-                    if (!fileContent) {
-                        alert('🔍 正在拉取最新内容...');
-                        const res = await fetch(`https://${config.domain}.onrender.com/downloadLatestFile`);
-                        if (!res.ok) throw new Error(`拉取失败（${res.status}）`);
-                        fileContent = await res.text();
-                    }
-
-                    document.documentElement.innerHTML = fileContent;
+                    const { fileName, content } = currentNoticeData.file;
+                    document.documentElement.innerHTML = content;
                     alert(`✅ 更新成功！当前已是${fileName}最新版`);
                 } catch (err) {
                     alert(`❌ 更新失败：${err.message}，请稍等重试`);
