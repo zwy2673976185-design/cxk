@@ -6,15 +6,16 @@ const app = express();
 
 const port = process.env.PORT || 3000;
 
-// 跨域配置：允许Render前端域名访问
+// 跨域配置：允许Render前端域名访问（替换为你的实际Render域名）
 app.use(cors({
-  origin: "https://cxk-z875.onrender.com", // 替换为你的实际Render域名
+  origin: "https://cxk-z875.onrender.com",
   methods: ["GET", "POST"],
   allowedHeaders: ["Content-Type"]
 }));
 app.use(express.static('./'));
 
-const updateDir = './latest_update';
+// 存储目录改为Render允许写入的临时目录
+const updateDir = '/tmp/latest_update'; 
 const latestFilePath = `${updateDir}/latest_update.html`;
 const fileInfoPath = `${updateDir}/file_info.json`;
 if (!fs.existsSync(updateDir)) fs.mkdirSync(updateDir);
@@ -23,6 +24,8 @@ const upload = multer({
   dest: updateDir + '/', 
   limits: { fileSize: 10 * 1024 * 1024 } 
 });
+
+// 接口1：接收文件上传（自动覆盖旧文件）
 app.post('/uploadNewFile', upload.single('updateHtml'), (req, res) => {
   try {
     fs.renameSync(req.file.path, latestFilePath);
@@ -38,6 +41,7 @@ app.post('/uploadNewFile', upload.single('updateHtml'), (req, res) => {
   }
 });
 
+// 接口2：获取公告信息
 app.get('/getNoticeInfo', (req, res) => {
   try {
     if (fs.existsSync(fileInfoPath) && fs.existsSync(latestFilePath)) {
@@ -51,6 +55,7 @@ app.get('/getNoticeInfo', (req, res) => {
   }
 });
 
+// 接口3：下载最新文件
 app.get('/downloadLatestFile', (req, res) => {
   try {
     if (fs.existsSync(latestFilePath) && fs.existsSync(fileInfoPath)) {
@@ -66,6 +71,7 @@ app.get('/downloadLatestFile', (req, res) => {
   }
 });
 
+// 启动服务（Render自动执行npm start）
 app.listen(port, () => {
   console.log(`服务启动于端口 ${port}`);
 });
