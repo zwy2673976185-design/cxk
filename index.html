@@ -3,18 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>主容器（悬浮窗常驻版）</title>
+    <title>JS动态加载（悬浮窗常驻版）</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei", sans-serif; }
         body { height: 100vh; overflow: hidden; position: relative; margin: 0; padding: 0; }
         
-        /* 1. 页面容器：用iframe承载所有新HTML，避免覆盖悬浮窗 */
-        #pageContainer { 
+        /* 1. 核心：内容容器（仅放动态加载的新HTML，不碰悬浮窗） */
+        #dynamicContent { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            border: none; z-index: 1; /* 层级低于悬浮窗，确保不遮挡 */
+            z-index: 1; /* 层级低于悬浮窗，不遮挡 */
+            overflow: auto; /* 新页面内容超出屏幕可滚动，模拟正常页面 */
         }
 
-        /* 2. 悬浮球：常驻顶层，不被iframe覆盖 */
+        /* 2. 悬浮球：常驻顶层，JS动态操作不影响它 */
         .float-btn { 
             position: fixed; z-index: 9999; width: 60px; height: 60px; border-radius: 0; box-shadow: 0 3px 15px rgba(0,0,0,0.3); 
             cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform 0.2s ease, box-shadow 0.2s ease; 
@@ -24,7 +25,7 @@
         }
         .float-btn:active { transform: scale(0.95); box-shadow: 0 5px 20px rgba(0,0,0,0.4); }
         
-        /* 3. 悬浮窗：常驻顶层，功能完整 */
+        /* 3. 悬浮窗：常驻顶层，DOM独立，不被动态内容删除 */
         .float-window { 
             position: fixed; z-index: 9998; width: 300px; height: 280px; background: white; border-radius: 12px; 
             box-shadow: 0 5px 25px rgba(0,0,0,0.15); overflow: hidden; display: none; opacity: 0; transition: opacity 0.3s ease; 
@@ -61,7 +62,7 @@
         }
         .content-panel.active { display: block; }
         
-        /* 更新模块样式：保留核心元素 */
+        /* 更新模块样式：核心元素保留，样式隔离 */
         .notice-item { padding: 10px 0; display: block; }
         .notice-title { font-size: 18px; font-weight: 600; color: #2563eb; margin-bottom: 8px; }
         .notice-time { font-size: 12px; color: #999; margin-bottom: 10px; }
@@ -73,16 +74,19 @@
         .download-btn:disabled { background: #93c5fd; cursor: not-allowed; }
         .update-btn { background: #10b981; color: white; box-shadow: 0 1px 3px rgba(16, 185, 129, 0.2); display: block; }
         .empty-tip { text-align: center; color: #999; font-size: 14px; line-height: 1.5; padding: 20px 0; border: none; background: transparent; }
+
+        /* 新页面样式隔离提示：建议新HTML样式加前缀，避免冲突 */
+        #dynamicContent * { box-sizing: border-box; }
     </style>
 </head>
 <body>
-    <!-- 1. 页面容器：所有新HTML都加载到这个iframe里，自身功能完全独立 -->
-    <iframe id="pageContainer" src="about:blank"></iframe>
+    <!-- 1. 动态内容容器：所有新HTML都动态插入这里，不影响其他DOM -->
+    <div id="dynamicContent"></div>
 
-    <!-- 2. 悬浮球：常驻显示，不受iframe内容影响 -->
+    <!-- 2. 悬浮球：DOM独立，常驻页面 -->
     <button class="float-btn" id="floatBtn"></button>
 
-    <!-- 3. 悬浮窗：常驻顶层，功能完整 -->
+    <!-- 3. 悬浮窗：DOM独立，功能完整 -->
     <div class="float-window" id="floatWindow">
         <div class="window-header" id="windowHeader">
             功能面板
@@ -129,177 +133,187 @@
             if (window.floatingWindowInjected) return;
             window.floatingWindowInjected = true;
 
-            // 配置项：替换成你的Render服务名
+            // 配置项：替换为你的服务信息
             const config = { 
-                domain: "cxk-z875",
-                latestNoticeKey: "latestReceivedNotice", // 存储最新更新信息
-                downloadedFileKey: "downloadedFileStatus", // 存储下载状态（永久生效）
-                initPageSrc: "" // 初始加载的HTML地址（可选，如"https://xxx.com/index.html"）
+                domain: "cxk-z875", // Render服务名
+                latestNoticeKey: "latestReceivedNotice", // 存储更新信息
+                downloadedFileKey: "downloadedFileStatus", // 存储下载状态（永久）
+                initHtmlContent: `<!-- 初始页面内容（可替换为你的首页HTML） -->
+                    <div style="padding: 20px; text-align: center;">
+                        <h1>初始首页</h1>
+                        <p style="margin: 20px 0;">点击右下角悬浮窗检查更新</p>
+                        <button style="padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="alert('初始页面按钮正常工作')">测试初始页面功能</button>
+                    </div>`
             };
 
-            // 工具函数：保留核心功能（哈希校验、时间格式化等）
+            // 工具函数：核心功能保留，全局可用
             const utils = {
-                getSafeBottom() { 
-                    const p = parseFloat(getComputedStyle(document.body).paddingBottom); 
-                    return isNaN(p) ? 20 : p; 
-                },
+                // 边界校验（悬浮窗拖拽用）
                 checkWindowBound(left, top) { 
                     const w = document.documentElement.clientWidth; 
                     const h = document.documentElement.clientHeight; 
-                    const sb = utils.getSafeBottom(); 
                     return { 
                         left: Math.max(20, Math.min(left, w - 300 - 20)), 
-                        top: Math.max(20, Math.min(top, h - 280 - sb - 20)) 
+                        top: Math.max(20, Math.min(top, h - 280 - 20)) 
                     }; 
                 },
-                getDefaultWindowPos() { 
-                    const w = document.documentElement.clientWidth; 
-                    const h = document.documentElement.clientHeight; 
-                    return utils.checkWindowBound((w-300)/2, (h-280)/2); 
-                },
+                // 时间格式化
                 formatTime(dateStr) {
                     const date = new Date(dateStr);
                     return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, '0')}月${String(date.getDate()).padStart(2, '0')}日`;
                 },
-                getLatestNoticeFromStorage() {
-                    const noticeStr = localStorage.getItem(config.latestNoticeKey);
-                    return noticeStr ? JSON.parse(noticeStr) : null;
-                },
-                saveLatestNoticeToStorage(notice) {
-                    localStorage.setItem(config.latestNoticeKey, JSON.stringify(notice));
-                },
-                // 标记文件已下载（按“文件名+哈希”绑定，新文件才重置）
-                markFileAsDownloaded(fileName, fileHash) {
-                    localStorage.setItem(config.downloadedFileKey, JSON.stringify({
-                        name: fileName,
-                        hash: fileHash,
-                        time: new Date().getTime()
-                    }));
-                },
-                // 检查文件是否已下载（永久生效，除非新文件推送）
-                isFileDownloaded(fileName, fileHash) {
-                    const status = localStorage.getItem(config.downloadedFileKey);
-                    if (!status) return false;
-                    const { name, hash } = JSON.parse(status);
-                    return name === fileName && hash === fileHash;
-                },
-                // 计算文件哈希（确保新文件精准识别）
-                async calculateFileHash(fileContent) {
+                // 本地存储操作（更新信息+下载状态）
+                getStorage(key) { return localStorage.getItem(key) ? JSON.parse(localStorage.getItem(key)) : null; },
+                setStorage(key, data) { localStorage.setItem(key, JSON.stringify(data)); },
+                // 文件哈希校验（确保新文件精准识别）
+                async calculateFileHash(content) {
                     const encoder = new TextEncoder();
-                    const data = encoder.encode(fileContent);
-                    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(content));
                     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+                },
+                // 检查文件是否已下载（永久生效，新文件才重置）
+                isFileDownloaded(fileName, fileHash) {
+                    const status = this.getStorage(config.downloadedFileKey);
+                    return status && status.name === fileName && status.hash === fileHash;
                 }
             };
 
-            // DOM元素：悬浮窗相关（独立于iframe，不会被删除）
-            const pageContainer = document.getElementById('pageContainer'); // 新HTML容器
+            // DOM元素：核心分两类，互不干扰
+            const dynamicContent = document.getElementById('dynamicContent'); // 动态内容容器
             const floatBtn = document.getElementById('floatBtn');
             const floatWindow = document.getElementById('floatWindow');
             const modalBack = document.getElementById('modalBack');
             const funcButtons = document.getElementById('funcButtons');
-            const btnMy = document.getElementById('btnMy');
             const btnNotice = document.getElementById('btnNotice');
-            const btnContact = document.getElementById('btnContact');
-            const btnSetting = document.getElementById('btnSetting');
             const panelNotice = document.getElementById('panelNotice');
             const defaultTip = document.getElementById('defaultTip');
             const pushNotice = document.getElementById('pushNotice');
 
-            // 状态变量：全局常驻，不受页面切换影响
-            let btnIsDragging = false, winIsDragging = false, isInMainPanel = true;
-            let currentWindowPos = utils.getDefaultWindowPos();
-            let currentNoticeData = utils.getLatestNoticeFromStorage() || null;
+            // 全局状态：不受动态内容影响
+            let currentWindowPos = utils.checkWindowBound((window.innerWidth-300)/2, (window.innerHeight-280)/2);
+            let currentNoticeData = utils.getStorage(config.latestNoticeKey) || null;
+            let btnIsDragging = false, winIsDragging = false;
             let btnDragStart = null, winDragStart = null;
-            let downloadInterval = null; // 下载定时器（避免卡住）
+            let downloadInterval = null;
 
-            // 1. 初始化：加载初始页面（可选）
-            if (config.initPageSrc) {
-                pageContainer.src = config.initPageSrc;
+            // 1. 初始化：加载初始页面（纯JS动态插入）
+            function initDefaultPage() {
+                if (config.initHtmlContent) {
+                    renderDynamicHtml(config.initHtmlContent);
+                }
             }
 
-            // 2. WebSocket：全局常驻连接，实时接收新更新
-            let ws;
-            let reconnectCount = 0;
-            const RECONNECT_DELAY = 1000;
+            // 2. 核心方法：纯JS动态渲染新HTML（关键！不碰悬浮窗DOM）
+            function renderDynamicHtml(htmlContent) {
+                if (!htmlContent) return;
 
+                // 步骤1：清空旧内容（只清动态容器，悬浮窗不动）
+                dynamicContent.innerHTML = '';
+
+                // 步骤2：创建临时容器，解析HTML结构
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = htmlContent;
+
+                // 步骤3：提取并插入样式（确保新页面样式生效）
+                const styles = tempDiv.querySelectorAll('style');
+                styles.forEach(style => {
+                    dynamicContent.appendChild(style.cloneNode(true));
+                });
+
+                // 步骤4：提取并插入页面结构（body内容）
+                const bodyContent = tempDiv.querySelector('body')?.innerHTML || tempDiv.innerHTML;
+                const contentWrapper = document.createElement('div');
+                contentWrapper.innerHTML = bodyContent;
+                dynamicContent.appendChild(contentWrapper);
+
+                // 步骤5：提取并执行脚本（确保新页面JS功能正常）
+                const scripts = tempDiv.querySelectorAll('script');
+                scripts.forEach(oldScript => {
+                    const newScript = document.createElement('script');
+                    // 复制脚本属性（src/text）
+                    if (oldScript.src) newScript.src = oldScript.src;
+                    if (oldScript.textContent) newScript.textContent = oldScript.textContent;
+                    // 脚本加载/执行完成后插入（避免顺序问题）
+                    newScript.onload = newScript.onreadystatechange = function() {
+                        if (!this.readyState || this.readyState === 'loaded' || this.readyState === 'complete') {
+                            dynamicContent.appendChild(newScript);
+                        }
+                    };
+                    // 无src的脚本直接插入
+                    if (!oldScript.src) dynamicContent.appendChild(newScript);
+                });
+
+                // 提示：新页面样式建议加前缀（如#dynamicContent .new-page-xxx），避免和悬浮窗冲突
+            }
+
+            // 3. WebSocket：全局常驻，实时接收新更新
+            let ws;
+            const RECONNECT_DELAY = 1000;
             function initWebSocket() {
                 if (ws) ws.close();
                 ws = new WebSocket(`wss://${config.domain}.onrender.com`);
 
                 ws.onopen = () => {
-                    reconnectCount = 0;
-                    autoFetchLatestAnnouncement(); // 连接成功后拉取最新更新
+                    console.log('WebSocket连接成功');
+                    fetchLatestNotice(); // 拉取最新更新
                 };
 
                 ws.onclose = () => {
-                    reconnectCount++;
-                    setTimeout(initWebSocket, RECONNECT_DELAY); // 自动重连
+                    console.log('WebSocket断开，自动重连');
+                    setTimeout(initWebSocket, RECONNECT_DELAY);
                 };
 
-                ws.onerror = (err) => {
-                    console.error('WebSocket错误：', err);
-                    if (ws.readyState !== WebSocket.CLOSED) ws.close();
-                };
-
-                // 接收新更新：仅新文件（哈希变化）才触发更新
                 ws.onmessage = async (e) => {
                     try {
                         const newData = JSON.parse(e.data);
                         if (newData.type === 'notice' && newData.file?.content) {
-                            const newFileHash = await utils.calculateFileHash(newData.file.content);
-                            newData.file.hash = newFileHash;
-                            const isNewFile = !utils.isFileDownloaded(newData.file.name, newFileHash);
+                            // 哈希校验：仅新文件才更新状态
+                            const fileHash = await utils.calculateFileHash(newData.file.content);
+                            newData.file.hash = fileHash;
+                            const isNewFile = !utils.isFileDownloaded(newData.file.name, fileHash);
 
                             if (isNewFile) {
                                 currentNoticeData = newData;
-                                utils.saveLatestNoticeToStorage(newData);
-                                autoRenderNotice();
-                                autoNotifyAndSwitchPanel(); // 提示用户有新更新
+                                utils.setStorage(config.latestNoticeKey, newData);
+                                renderUpdatePanel();
+                                notifyNewUpdate();
                             }
                         }
                     } catch (err) {
-                        console.error('解析更新数据失败：', err);
+                        console.error('解析更新失败：', err);
                     }
                 };
             }
 
-            // 3. 拉取最新更新：页面加载时兜底
-            async function autoFetchLatestAnnouncement() {
+            // 4. 拉取最新更新（兜底：WebSocket断开时用）
+            async function fetchLatestNotice() {
                 try {
                     const res = await fetch(`https://${config.domain}.onrender.com/getLatestAnnouncement`);
                     if (!res.ok) throw new Error(`请求失败（${res.status}）`);
 
                     const result = await res.json();
                     if (result.success && result.data?.file?.content) {
-                        const newFileHash = await utils.calculateFileHash(result.data.file.content);
-                        result.data.file.hash = newFileHash;
-                        const isNewFile = !utils.isFileDownloaded(result.data.file.name, newFileHash);
+                        const fileHash = await utils.calculateFileHash(result.data.file.content);
+                        result.data.file.hash = fileHash;
+                        const isNewFile = !utils.isFileDownloaded(result.data.file.name, fileHash);
 
                         if (isNewFile) {
                             currentNoticeData = result.data;
-                            utils.saveLatestNoticeToStorage(result.data);
+                            utils.setStorage(config.latestNoticeKey, result.data);
                         }
-                        autoRenderNotice(); // 渲染按钮状态（下载/更新）
-                    } else if (!currentNoticeData) {
-                        defaultTip.style.display = 'block';
-                        pushNotice.style.display = 'none';
-                    } else {
-                        autoRenderNotice();
-                    }
-                } catch (err) {
-                    console.error('拉取更新失败：', err);
-                    if (currentNoticeData) {
-                        autoRenderNotice(); // 失败也显示已有状态
+                        renderUpdatePanel();
                     } else {
                         defaultTip.textContent = '暂无更新';
                     }
-                    setTimeout(autoFetchLatestAnnouncement, 10000); // 10秒后重试
+                } catch (err) {
+                    console.error('拉取更新失败：', err);
+                    defaultTip.textContent = '加载更新失败，稍后重试';
+                    setTimeout(fetchLatestNotice, 10000);
                 }
             }
 
-            // 4. 渲染更新模块：按钮状态永久固定（下载→更新）
-            function autoRenderNotice() {
+            // 5. 渲染更新面板（下载/更新按钮状态）
+            function renderUpdatePanel() {
                 if (!currentNoticeData?.file) {
                     defaultTip.style.display = 'block';
                     pushNotice.style.display = 'none';
@@ -309,8 +323,8 @@
                 const { name: fileName, hash } = currentNoticeData.file;
                 const isDownloaded = utils.isFileDownloaded(fileName, hash);
 
-                // 仅渲染核心元素：更新标题、时间、进度条、按钮
-                const noticeHtml = `
+                // 渲染核心元素：更新标题、时间、进度条、按钮
+                pushNotice.innerHTML = `
                     <div class="notice-title">更新</div>
                     <div class="notice-time">更新时间：${utils.formatTime(currentNoticeData.date || new Date())}</div>
                     <div class="progress-actions">
@@ -319,27 +333,25 @@
                         </div>
                         <button class="action-btn ${isDownloaded ? 'update-btn' : 'download-btn'}" 
                                 id="downloadBtn" 
-                                onclick="${isDownloaded ? 'markAsUpdated()' : 'startDownload()'}">
+                                onclick="${isDownloaded ? 'handleUpdate()' : 'handleDownload()'}">
                             ${isDownloaded ? '更新' : '下载'}
                         </button>
                     </div>
                 `;
 
-                pushNotice.innerHTML = noticeHtml;
                 defaultTip.style.display = 'none';
                 pushNotice.style.display = 'block';
             }
 
-            // 5. 下载逻辑：下载完成后永久变“更新”
-            window.startDownload = async function() {
-                const downloadProgress = document.getElementById('downloadProgress');
+            // 6. 下载逻辑：纯JS控制，完成后永久变“更新”
+            window.handleDownload = function() {
                 const progressBar = document.getElementById('progressBar');
                 const downloadBtn = document.getElementById('downloadBtn');
                 const { name: fileName, content, hash } = currentNoticeData.file;
 
-                if (!downloadProgress || !progressBar || !downloadBtn || !content) return;
+                if (!progressBar || !downloadBtn || !content) return;
 
-                // 清除旧定时器，避免重复下载卡住
+                // 清除旧定时器，避免卡住
                 if (downloadInterval) clearInterval(downloadInterval);
 
                 // 下载中状态
@@ -355,98 +367,68 @@
 
                     if (progress >= 100) {
                         clearInterval(downloadInterval);
-                        // 下载完成：永久切换为“更新”按钮
+                        // 永久切换为“更新”按钮
                         downloadBtn.textContent = '更新';
                         downloadBtn.className = 'action-btn update-btn';
-                        downloadBtn.onclick = markAsUpdated;
+                        downloadBtn.onclick = handleUpdate;
                         downloadBtn.disabled = false;
-                        // 标记已下载（localStorage永久存储，刷新/切换页面不重置）
-                        utils.markFileAsDownloaded(fileName, hash);
+                        // 标记已下载（localStorage永久存储）
+                        utils.setStorage(config.downloadedFileKey, {
+                            name: fileName,
+                            hash: hash,
+                            time: Date.now()
+                        });
                     }
                 }, 100);
             };
 
-            // 6. 更新逻辑：加载新HTML到iframe，悬浮窗不受影响
-            window.markAsUpdated = async function() {
-                if (!confirm('⚠️ 确认更新？更新后将加载最新页面')) return;
+            // 7. 更新逻辑：纯JS动态加载新HTML（不删悬浮窗）
+            window.handleUpdate = function() {
+                if (!confirm('确认更新？更新后加载最新页面，悬浮窗可正常使用')) return;
 
                 try {
                     const { content: newHtmlContent } = currentNoticeData.file;
                     if (!newHtmlContent) throw new Error('无最新页面内容');
 
-                    // 关键：不覆盖body，而是把新HTML加载到iframe（新页面功能完全独立）
-                    // 方式1：直接加载HTML内容（适合无跨域的本地/同域内容）
-                    pageContainer.contentDocument.documentElement.innerHTML = newHtmlContent;
-                    
-                    // 方式2：若新HTML是远程地址，用src加载（二选一，注释掉方式1即可）
-                    // pageContainer.src = "https://xxx.com/new-page.html";
-
-                    alert('✅ 更新成功！页面已加载，悬浮窗可正常使用');
+                    // 关键：调用动态渲染方法，只更内容容器
+                    renderDynamicHtml(newHtmlContent);
+                    alert('更新成功！新页面功能正常，悬浮窗可随时使用');
                 } catch (err) {
-                    alert(`❌ 更新失败：${err.message}，请稍等重试`);
+                    alert(`更新失败：${err.message}`);
                 }
             };
 
-            // 7. 悬浮窗辅助功能：提示、面板切换、拖拽
-            function autoNotifyAndSwitchPanel(tip = '收到新更新') {
+            // 8. 悬浮窗辅助功能：提示、拖拽、面板切换
+            function notifyNewUpdate() {
                 // 系统通知
                 if (Notification.permission === 'granted') {
-                    new Notification(tip, {
+                    new Notification('收到新更新', {
                         body: `更新时间：${utils.formatTime(currentNoticeData.date)}`,
                         icon: 'https://img.icons8.com/ios-glyphs/30/2563eb/announcement--v1.png'
                     });
                 } else if (Notification.permission !== 'denied') {
                     Notification.requestPermission().then(perm => {
-                        if (perm === 'granted') {
-                            new Notification(tip, {
-                                body: `更新时间：${utils.formatTime(currentNoticeData.date)}`,
-                                icon: 'https://img.icons8.com/ios-glyphs/30/2563eb/announcement--v1.png'
-                            });
-                        }
+                        if (perm === 'granted') notifyNewUpdate();
                     });
                 }
 
-                // 弹窗提示
-                alert(`🎉 ${tip}`);
-
-                // 自动切换到更新面板
-                if (!panelNotice.classList.contains('active')) {
-                    switchContentPanel('panelNotice');
-                }
-
-                // 展开悬浮窗
-                if (!floatWindow.classList.contains('active')) {
-                    floatWindow.classList.add('active');
-                    currentWindowPos = utils.getDefaultWindowPos();
-                    floatWindow.style.left = `${currentWindowPos.left}px`;
-                    floatWindow.style.top = `${currentWindowPos.top}px`;
-                }
+                // 弹窗提示+展开悬浮窗
+                alert('收到新更新！点击悬浮窗查看');
+                floatWindow.classList.add('active');
+                floatWindow.style.left = `${currentWindowPos.left}px`;
+                floatWindow.style.top = `${currentWindowPos.top}px`;
+                renderUpdatePanel();
             }
 
             // 面板切换
-            function switchContentPanel(targetId) {
-                funcButtons.style.display = 'none';
-                [panelNotice, document.getElementById('panelMy'), document.getElementById('panelContact'), document.getElementById('panelSetting')].forEach(panel => {
+            function switchPanel(targetId) {
+                document.querySelectorAll('.content-panel').forEach(panel => {
                     panel.classList.remove('active');
                     panel.style.display = 'none';
                 });
                 document.getElementById(targetId).classList.add('active');
                 document.getElementById(targetId).style.display = 'block';
                 modalBack.style.display = 'block';
-                isInMainPanel = false;
-
-                if (targetId === 'panelNotice') autoRenderNotice();
-            }
-
-            // 返回主面板
-            function backToMainPanel() {
-                [panelNotice, document.getElementById('panelMy'), document.getElementById('panelContact'), document.getElementById('panelSetting')].forEach(panel => {
-                    panel.classList.remove('active');
-                    panel.style.display = 'none';
-                });
-                funcButtons.style.display = 'flex';
-                modalBack.style.display = 'none';
-                isInMainPanel = true;
             }
 
             // 悬浮球拖拽
@@ -462,25 +444,22 @@
                 const dy = touch.clientY - btnDragStart.y;
                 if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
                     btnIsDragging = true;
-                    const winW = document.documentElement.clientWidth;
-                    const winH = document.documentElement.clientHeight;
-                    const safeBottom = utils.getSafeBottom();
-                    const boundedLeft = Math.max(20, Math.min(btnDragStart.rect.left + dx, winW - 60 - 20));
-                    const boundedTop = Math.max(20, Math.min(btnDragStart.rect.top + dy, winH - 60 - safeBottom - 20));
-                    floatBtn.style.left = `${boundedLeft}px`;
-                    floatBtn.style.top = `${boundedTop}px`;
+                    const newLeft = btnDragStart.rect.left + dx;
+                    const newTop = btnDragStart.rect.top + dy;
+                    // 边界限制
+                    floatBtn.style.left = `${Math.max(20, Math.min(newLeft, window.innerWidth - 80))}px`;
+                    floatBtn.style.top = `${Math.max(20, Math.min(newTop, window.innerHeight - 80))}px`;
                 }
             }, { passive: false });
 
-            // 悬浮球点击（展开/收起悬浮窗）
+            // 悬浮球点击（展开/收起）
             floatBtn.addEventListener('click', () => {
                 if (btnIsDragging) return;
                 floatWindow.classList.toggle('active');
                 if (floatWindow.classList.contains('active')) {
-                    currentWindowPos = utils.getDefaultWindowPos();
                     floatWindow.style.left = `${currentWindowPos.left}px`;
                     floatWindow.style.top = `${currentWindowPos.top}px`;
-                    autoRenderNotice(); // 展开时刷新按钮状态
+                    renderUpdatePanel();
                 }
             });
 
@@ -499,19 +478,37 @@
                 const dy = touch.clientY - winDragStart.y;
                 if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
                     winIsDragging = true;
-                    currentWindowPos = { left: winDragStart.rect.left + dx, top: winDragStart.rect.top + dy };
-                    currentWindowPos = utils.checkWindowBound(currentWindowPos.left, currentWindowPos.top);
+                    currentWindowPos = utils.checkWindowBound(winDragStart.rect.left + dx, winDragStart.rect.top + dy);
                     floatWindow.style.left = `${currentWindowPos.left}px`;
                     floatWindow.style.top = `${currentWindowPos.top}px`;
                 }
             }, { passive: false });
 
-            // 面板按钮点击事件
-            modalBack.addEventListener('click', backToMainPanel);
-            btnMy.addEventListener('click', () => switchContentPanel('panelMy'));
-            btnNotice.addEventListener('click', () => switchContentPanel('panelNotice'));
-            btnContact.addEventListener('click', () => switchContentPanel('panelContact'));
-            btnSetting.addEventListener('click', () => switchContentPanel('panelSetting'));
+            // 面板按钮事件
+            modalBack.addEventListener('click', () => {
+                document.querySelectorAll('.content-panel').forEach(panel => {
+                    panel.classList.remove('active');
+                    panel.style.display = 'none';
+                });
+                funcButtons.style.display = 'flex';
+                modalBack.style.display = 'none';
+            });
+            btnNotice.addEventListener('click', () => {
+                funcButtons.style.display = 'none';
+                switchPanel('panelNotice');
+            });
+            document.getElementById('btnMy').addEventListener('click', () => {
+                funcButtons.style.display = 'none';
+                switchPanel('panelMy');
+            });
+            document.getElementById('btnContact').addEventListener('click', () => {
+                funcButtons.style.display = 'none';
+                switchPanel('panelContact');
+            });
+            document.getElementById('btnSetting').addEventListener('click', () => {
+                funcButtons.style.display = 'none';
+                switchPanel('panelSetting');
+            });
 
             // 窗口 resize 适配
             window.addEventListener('resize', () => {
@@ -522,10 +519,11 @@
                 }
             });
 
-            // 初始化：启动WebSocket+拉取更新
+            // 启动流程：先加载初始页面，再启动WebSocket
             document.addEventListener('DOMContentLoaded', () => {
+                initDefaultPage();
                 initWebSocket();
-                autoFetchLatestAnnouncement();
+                fetchLatestNotice();
             });
         })();
     </script>
