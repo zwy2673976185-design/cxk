@@ -1,109 +1,77 @@
-const WebSocket = require('ws');
 const express = require('express');
+const multer = require('multer');
+const fs = require('fs');
+const cors = require('cors');
 const app = express();
-const httpServer = app.listen(8080);
-const wss = new WebSocket.Server({ server: httpServer });
+const port = 3000; // 可修改，需确保服务器开放该端口，且和前后端端口一致
 
-// 存储：发送端集合 + 接收端集合
-const senders = new Set();
-const receivers = new Set();
-app.use(express.static(__dirname));
+// 基础配置：解决跨域+允许访问前端HTML文件
+app.use(cors());
+app.use(express.static('./')); // 关键：让浏览器能访问发送端、接收端HTML
 
-// 全局记录当前公告（用于接收端常驻显示，非本地存储）
-let currentAnnouncement = null; // 存储当前未清除的公告
+// 核心设置：只存1个最新更新文件（新文件上传自动覆盖，旧文件直接替换）
+const updateDir = './latest_update'; // 服务器存储最新文件的文件夹（自动创建）
+const latestFilePath = `${updateDir}/latest_update.html`; // 固定最新文件路径，确保唯一
+const fileInfoPath = `${updateDir}/file_info.json`; // 存储文件信息（供前端公告显示）
+if (!fs.existsSync(updateDir)) fs.mkdirSync(updateDir);
 
-wss.on('connection', (ws) => {
-  console.log(`✅ 新设备连接（IP：${ws._socket.remoteAddress}）`);
-  let clientType = 'unknown';
-  let heartBeatInterval;
-  let isAlive = true;
-
-  // 1. 类型握手（sender/receiver）
-  ws.once('message', (data) => {
-    const type = data.toString().trim();
-    if (type === 'sender') {
-      clientType = 'sender';
-      senders.add(ws);
-      console.log(`🔵 标记为发送端，当前发送端数：${senders.size}`);
-    } else if (type === 'receiver') {
-      clientType = 'receiver';
-      receivers.add(ws);
-      console.log(`🟢 标记为接收端，当前接收端数：${receivers.size}`);
-      // 接收端刚连接时，主动推送当前未清除的公告（确保未更新的不消失）
-      if (currentAnnouncement) {
-        ws.send(JSON.stringify(currentAnnouncement));
-        console.log(`📥 向新接收端推送历史公告`);
-      }
-    } else {
-      ws.close(1003, '类型错误，仅支持sender/receiver');
-      console.log(`❌ 无效类型：${type}，已断开`);
-      return;
-    }
-
-    // 2. 心跳检测（30秒/次）
-    heartBeatInterval = setInterval(() => {
-      if (!isAlive) {
-        clearInterval(heartBeatInterval);
-        ws.terminate();
-        return;
-      }
-      isAlive = false;
-      ws.ping();
-    }, 30000);
-
-    // 3. 消息处理（区分“新增公告”“清除全部”“覆盖旧公告”指令）
-    ws.on('message', (data) => {
-      try {
-        const msg = JSON.parse(data.toString());
-        // 仅处理发送端的指令
-        if (clientType !== 'sender') return;
-
-        // 指令1：新增公告（保留旧公告，新公告追加，暂不实现，默认用“覆盖/清除”）
-        // 指令2：覆盖旧公告（新公告替换旧的，旧公告消失）
-        if (msg.type === 'notice' && msg.coverOld) {
-          currentAnnouncement = msg; // 用新公告覆盖旧的
-          console.log(`📤 发送端推送公告（覆盖旧的）：${msg.title}`);
-        }
-        // 指令3：保留旧公告（新公告不替换，旧的仍在，接收端显示最新的）
-        else if (msg.type === 'notice' && !msg.coverOld) {
-          currentAnnouncement = msg; // 虽不“覆盖”，但接收端只显示最新的（需旧的常驻可改数组）
-          console.log(`📤 发送端推送公告（保留旧的）：${msg.title}`);
-        }
-        // 指令4：清除全部公告（所有未更新的公告都消失）
-        else if (msg.type === 'clearAll') {
-          currentAnnouncement = null;
-          console.log(`📤 发送端指令：清除全部公告`);
-        }
-
-        // 转发指令给所有接收端
-        receivers.forEach((client) => {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify(msg));
-            console.log(`📥 已转发指令给接收端`);
-          }
-        });
-      } catch (err) {
-        console.error(`❌ 消息解析错误：${err.message}`);
-      }
-    });
-  });
-
-  // 心跳响应
-  ws.on('pong', () => { isAlive = true; });
-
-  // 连接关闭清理
-  ws.on('close', () => {
-    clearInterval(heartBeatInterval);
-    senders.delete(ws);
-    receivers.delete(ws);
-    console.log(`❌ 设备断开（${clientType}），发送端：${senders.size}，接收端：${receivers.size}`);
-  });
-
-  ws.onerror = (err) => { console.log(`❌ 连接错误：${err.message}`); };
+// 接口1：接收发送端上传的新文件（自动覆盖旧文件，更新公告信息）
+const upload = multer({ 
+  dest: updateDir + '/', 
+  limits: { fileSize: 10 * 1024 * 1024 } // 限制文件最大10MB，可修改
+});
+app.post('/uploadNewFile', upload.single('updateHtml'), (req, res) => {
+  try {
+    // 1. 覆盖旧文件，保留最新版
+    fs.renameSync(req.file.path, latestFilePath);
+    // 2. 记录文件信息（前端公告要显示的内容：文件名、大小、推送时间）
+    const fileInfo = {
+      fileName: req.file.originalname,
+      size: (req.file.size / 1024).toFixed(2) + 'KB',
+      updateTime: new Date().toLocaleString()
+    };
+    fs.writeFileSync(fileInfoPath, JSON.stringify(fileInfo)); // 保存信息到服务器
+    
+    res.send({ success: true, msg: '新文件推送成功！已覆盖旧文件，前端公告将显示最新内容' });
+  } catch (err) {
+    res.send({ success: false, msg: '文件推送失败：' + err.message });
+  }
 });
 
-// 启动提示
-console.log(`🚀 服务器启动完成`);
-console.log(`WebSocket地址：wss://cxk-z875.onrender.com`);
-console.log(`发送端：https://cxk-z875.onrender.com/发送.html`);
-console.log(`接收端：https://cxk-z875.onrender.com/前端.html`);
+// 接口2：给前端提供公告信息（前端打开页面时自动请求，未更新则一直显示）
+app.get('/getNoticeInfo', (req, res) => {
+  try {
+    // 检查文件是否存在：存在则返回公告信息，不存在则提示无文件
+    if (fs.existsSync(fileInfoPath) && fs.existsSync(latestFilePath)) {
+      const info = JSON.parse(fs.readFileSync(fileInfoPath, 'utf8'));
+      res.send({ success: true, notice: info });
+    } else {
+      res.send({ success: false, notice: '📢 暂无待更新文件' });
+    }
+  } catch (err) {
+    res.send({ success: false, notice: '公告加载失败：' + err.message });
+  }
+});
+
+// 接口3：前端下载最新文件（点击下载按钮时调用，下载后公告仍显示）
+app.get('/downloadLatestFile', (req, res) => {
+  try {
+    if (fs.existsSync(latestFilePath) && fs.existsSync(fileInfoPath)) {
+      const info = JSON.parse(fs.readFileSync(fileInfoPath, 'utf8'));
+      // 下载文件：文件名用原文件名，方便识别
+      res.download(latestFilePath, info.fileName, (err) => {
+        if (err) res.send({ success: false, msg: '文件下载失败：' + err.message });
+      });
+    } else {
+      res.send({ success: false, msg: '暂无待更新文件，无法下载' });
+    }
+  } catch (err) {
+    res.send({ success: false, msg: '下载出错：' + err.message });
+  }
+});
+
+// 启动服务（服务器端执行命令后，会显示访问地址）
+app.listen(port, () => {
+  console.log(`✅ 服务已启动！访问地址：http://你的服务器IP:${port}`);
+  console.log(`📌 关键操作：1. 打开 sender.html 推送文件 2. 打开 index.html 接收更新`);
+});
