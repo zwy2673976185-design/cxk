@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>悬浮功能面板（紧凑布局版）</title>
+    <title>悬浮功能面板（按钮切换修复版）</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei", sans-serif; }
         body { height: 100vh; overflow: hidden; position: relative; background: #f5f7fa; }
@@ -53,7 +53,7 @@
         }
         .content-panel.active { display: block; }
         
-        /* 紧凑公告布局样式 */
+        /* 纯自定义公告样式：仅展示用户填写的标题和内容 */
         .notice-item { 
             padding: 10px 0; display: block; 
         }
@@ -86,7 +86,10 @@
             background: #93c5fd; cursor: not-allowed; 
         }
         .update-btn { 
-            background: #10b981; color: white; box-shadow: 0 1px 3px rgba(16, 185, 129, 0.2); display: none; 
+            background: #10b981; color: white; box-shadow: 0 1px 3px rgba(16, 185, 129, 0.2); display: block; /* 确保显示 */
+        }
+        .file-tip { 
+            font-size: 11px; color: #999; margin-top: 5px; text-align: right; 
         }
         .empty-tip { 
             text-align: center; 
@@ -126,7 +129,7 @@
         </div>
         <div class="content-panel" id="panelNotice">
             <div id="noticeContainer">
-                <div class="empty-tip" id="defaultTip">暂无公告</div>
+                <div class="empty-tip" id="defaultTip">加载最新公告中...</div>
                 <div class="notice-item" id="pushNotice"></div>
             </div>
         </div>
@@ -148,14 +151,17 @@
             window.floatingWindowInjected = true;
 
             const config = { 
-                domain: "cxk-z875" // 你的Render服务名，必须和后端一致
+                domain: "cxk-z875", // 你的Render服务名，必须和后端一致
+                latestNoticeKey: "latestReceivedNotice" // localStorage存储最新公告的key
             };
 
             const utils = {
+                // 获取安全底部边距
                 getSafeBottom() { 
                     const p = parseFloat(getComputedStyle(document.body).paddingBottom); 
                     return isNaN(p) ? 20 : p; 
                 },
+                // 检查窗口边界
                 checkWindowBound(left, top) { 
                     const w = document.documentElement.clientWidth; 
                     const h = document.documentElement.clientHeight; 
@@ -165,29 +171,29 @@
                         top: Math.max(20, Math.min(top, h - 280 - sb - 20)) 
                     }; 
                 },
+                // 获取默认窗口位置
                 getDefaultWindowPos() { 
                     const w = document.documentElement.clientWidth; 
                     const h = document.documentElement.clientHeight; 
                     return utils.checkWindowBound((w-300)/2, (h-280)/2); 
                 },
-                formatFileSize(size) {
-                    if (size < 1024) return `${size}B`;
-                    if (size < 1024 * 1024) return `${(size / 1024).toFixed(2)}KB`;
-                    return `${(size / (1024 * 1024)).toFixed(2)}MB`;
-                },
+                // 格式化时间（紧凑美观）
                 formatTime(dateStr) {
-                    // 格式化时间为“2025年10月04日”样式
                     const date = new Date(dateStr);
                     return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, '0')}月${String(date.getDate()).padStart(2, '0')}日`;
                 },
-                getLastReceivedTime() {
-                    return localStorage.getItem('lastReceivedAnnouncementTime') || '2000-01-01 00:00:00';
+                // 从localStorage获取最新公告（新用户/刷新后仍能显示）
+                getLatestNoticeFromStorage() {
+                    const noticeStr = localStorage.getItem(config.latestNoticeKey);
+                    return noticeStr ? JSON.parse(noticeStr) : null;
                 },
-                setLastReceivedTime(time) {
-                    localStorage.setItem('lastReceivedAnnouncementTime', time);
+                // 保存最新公告到localStorage
+                saveLatestNoticeToStorage(notice) {
+                    localStorage.setItem(config.latestNoticeKey, JSON.stringify(notice));
                 }
             };
 
+            // 元素引用
             const floatBtn = document.getElementById('floatBtn');
             const floatWindow = document.getElementById('floatWindow');
             const modalBack = document.getElementById('modalBack');
@@ -200,13 +206,14 @@
             const defaultTip = document.getElementById('defaultTip');
             const pushNotice = document.getElementById('pushNotice');
 
+            // 状态变量
             let btnIsDragging = false, winIsDragging = false, isInMainPanel = true;
             let currentWindowPos = utils.getDefaultWindowPos();
-            let currentNoticeData = null;
+            let currentNoticeData = utils.getLatestNoticeFromStorage() || null; // 优先从localStorage读取最新公告
             let downloadInterval = null;
             let btnDragStart = null, winDragStart = null;
 
-            // WebSocket实时接收
+            // -------------------------- 核心1：WebSocket实时接收（确保新老用户都能收到最新） --------------------------
             let ws;
             let reconnectCount = 0;
             const RECONNECT_DELAY = 1000;
@@ -219,18 +226,21 @@
 
                 ws = new WebSocket(`wss://${config.domain}.onrender.com`);
 
+                // 连接成功：拉取最新公告（兜底，确保WebSocket未收到时也能获取）
                 ws.onopen = () => {
                     reconnectCount = 0;
                     console.log('✅ WebSocket连接成功');
-                    autoFetchLatestAnnouncement();
+                    autoFetchLatestAnnouncement(); // 主动拉取，避免WebSocket消息丢失
                 };
 
+                // 连接断开：自动重连
                 ws.onclose = () => {
                     reconnectCount++;
                     console.log(`❌ WebSocket断开，${RECONNECT_DELAY}ms后重连（第${reconnectCount}次）`);
                     setTimeout(initWebSocket, RECONNECT_DELAY);
                 };
 
+                // 连接错误：重连
                 ws.onerror = (err) => {
                     console.error('❌ WebSocket错误：', err);
                     if (ws.readyState !== WebSocket.CLOSED) {
@@ -238,18 +248,17 @@
                     }
                 };
 
+                // 实时接收新公告：覆盖旧数据，更新localStorage
                 ws.onmessage = (e) => {
                     console.log('📥 实时收到更新数据：', e.data);
                     try {
                         const newData = JSON.parse(e.data);
                         if (newData.type === 'notice') {
-                            const lastTime = utils.getLastReceivedTime();
-                            if (newData.date > lastTime) {
-                                currentNoticeData = newData;
-                                utils.setLastReceivedTime(newData.date);
-                                autoRenderNotice();
-                                autoNotifyAndSwitchPanel();
-                            }
+                            // 覆盖为最新公告，更新localStorage
+                            currentNoticeData = newData;
+                            utils.saveLatestNoticeToStorage(newData);
+                            autoRenderNotice(); // 重新渲染
+                            autoNotifyAndSwitchPanel(); // 通知用户
                         }
                     } catch (err) {
                         console.error('❌ 解析更新数据失败：', err);
@@ -257,49 +266,58 @@
                 };
             }
 
-            // 自动拉取最新公告
+            // -------------------------- 核心2：自动拉取最新公告（新用户/刷新后必执行） --------------------------
             async function autoFetchLatestAnnouncement() {
                 try {
-                    console.log('🔍 自动拉取最新公告');
+                    console.log('🔍 拉取最新公告（新老用户通用）');
                     const res = await fetch(`https://${config.domain}.onrender.com/getLatestAnnouncement`);
                     if (!res.ok) throw new Error(`请求失败（状态码：${res.status}）`);
 
                     const result = await res.json();
                     if (result.success && result.data) {
-                        const lastTime = utils.getLastReceivedTime();
-                        if (result.data.date > lastTime) {
-                            currentNoticeData = result.data;
-                            utils.setLastReceivedTime(result.data.date);
-                            autoRenderNotice();
-                            autoNotifyAndSwitchPanel('离线期间收到新公告');
-                        } else {
-                            console.log('ℹ️ 当前已是最新公告');
-                            currentNoticeData = result.data;
-                            autoRenderNotice();
-                        }
+                        // 无论是否新用户，都用后端最新数据覆盖
+                        currentNoticeData = result.data;
+                        utils.saveLatestNoticeToStorage(result.data); // 保存到localStorage，下次打开仍在
+                        autoRenderNotice();
+                    } else if (!currentNoticeData) {
+                        // 后端暂无数据且localStorage也没有：显示空提示
+                        defaultTip.style.display = 'block';
+                        pushNotice.style.display = 'none';
                     } else {
-                        console.log('ℹ️ 暂无公告');
-                        if (!currentNoticeData) autoRenderNotice();
+                        // 后端暂无新数据，但localStorage有旧数据：显示旧数据（确保老用户仍能看到）
+                        autoRenderNotice();
                     }
                 } catch (err) {
-                    console.error('❌ 自动拉取公告失败：', err);
+                    console.error('❌ 拉取公告失败：', err);
+                    // 失败后仍显示localStorage中的数据（断网时也能看到历史最新）
+                    if (currentNoticeData) {
+                        autoRenderNotice();
+                    } else {
+                        defaultTip.textContent = '暂无公告';
+                    }
+                    // 10秒后重试（网络恢复后自动获取）
                     setTimeout(autoFetchLatestAnnouncement, 10000);
                 }
             }
 
-            // 自动渲染公告（紧凑布局）
+            // -------------------------- 核心3：渲染公告（仅显示用户自定义的标题和内容） --------------------------
             function autoRenderNotice() {
-                if (!currentNoticeData || currentNoticeData.type !== 'notice') {
+                if (!currentNoticeData || !currentNoticeData.title || !currentNoticeData.content) {
                     defaultTip.style.display = 'block';
                     pushNotice.style.display = 'none';
                     return;
                 }
 
-                const formattedTime = utils.formatTime(currentNoticeData.date);
+                // 仅显示用户在发送端填写的标题、内容，无任何系统自动文字
+                const title = currentNoticeData.title;
+                const formattedTime = utils.formatTime(currentNoticeData.date || new Date());
+                const content = currentNoticeData.content;
+
+                // 渲染HTML（完全自定义，无系统自动前缀）
                 const noticeHtml = `
-                    <div class="notice-title">${currentNoticeData.title || '自定义标题'}</div>
+                    <div class="notice-title">${title}</div>
                     <div class="notice-time">更新时间：${formattedTime}</div>
-                    <div class="notice-content">${currentNoticeData.content || '公告内容'}</div>
+                    <div class="notice-content">${content}</div>
                     <div class="progress-actions">
                         <div class="download-progress" id="downloadProgress">
                             <div class="progress-bar" id="progressBar"></div>
@@ -311,38 +329,90 @@
                 pushNotice.innerHTML = noticeHtml;
                 defaultTip.style.display = 'none';
                 pushNotice.style.display = 'block';
-
-                // 初始化按钮状态
-                const downloadBtn = document.getElementById('downloadBtn');
-                if (downloadBtn) {
-                    downloadBtn.disabled = false;
-                }
             }
 
-            // 自动通知和切换面板
-            function autoNotifyAndSwitchPanel(tip = '收到新公告') {
+            // -------------------------- 核心4：下载→更新按钮切换逻辑（修复消失问题） --------------------------
+            // 下载逻辑
+            window.startDownload = function() {
+                const downloadProgress = document.getElementById('downloadProgress');
+                const progressBar = document.getElementById('progressBar');
+                const downloadBtn = document.getElementById('downloadBtn');
+
+                if (!downloadProgress || !progressBar || !downloadBtn || !currentNoticeData?.file) return;
+
+                // 初始化进度条和按钮
+                downloadBtn.textContent = '下载中';
+                downloadBtn.disabled = true;
+                progressBar.style.width = '0%';
+
+                // 模拟进度（实际项目可替换为真实下载进度）
+                let progress = 0;
+                downloadInterval = setInterval(() => {
+                    progress += 5;
+                    progressBar.style.width = `${progress}%`;
+                    if (progress >= 100) {
+                        clearInterval(downloadInterval);
+                        // 下载完成：切换为“更新”按钮
+                        downloadBtn.textContent = '更新';
+                        downloadBtn.className = 'action-btn update-btn';
+                        downloadBtn.onclick = markAsUpdated;
+                        downloadBtn.disabled = false;
+                    }
+                }, 100);
+            };
+
+            // 更新逻辑
+            window.markAsUpdated = async function() {
+                if (!confirm('⚠️ 确认更新？更新后页面将替换为最新版')) return;
+
+                try {
+                    let fileContent = currentNoticeData?.file?.content;
+
+                    // 兜底：从后端拉取最新内容
+                    if (!fileContent) {
+                        alert('🔍 正在拉取最新内容...');
+                        const res = await fetch(`https://${config.domain}.onrender.com/downloadLatestFile`);
+                        if (!res.ok) throw new Error(`拉取失败（${res.status}）`);
+                        fileContent = await res.text();
+                    }
+
+                    // 更新页面
+                    document.documentElement.innerHTML = fileContent;
+                    alert('✅ 更新成功！当前已是最新内容');
+                } catch (err) {
+                    alert(`❌ 更新失败：${err.message}，请稍等重试`);
+                }
+            };
+
+            // -------------------------- 其他辅助功能 --------------------------
+            // 自动通知并切换面板
+            function autoNotifyAndSwitchPanel(tip = '收到最新公告') {
+                // 系统通知
                 if (Notification.permission === 'granted') {
                     new Notification(tip, {
-                        body: `${currentNoticeData.title || '新公告'}\n更新时间：${utils.formatTime(currentNoticeData.date)}`,
+                        body: `${currentNoticeData.title}\n${utils.formatTime(currentNoticeData.date)}`,
                         icon: 'https://img.icons8.com/ios-glyphs/30/2563eb/announcement--v1.png'
                     });
                 } else if (Notification.permission !== 'denied') {
                     Notification.requestPermission().then(perm => {
                         if (perm === 'granted') {
                             new Notification(tip, {
-                                body: `${currentNoticeData.title || '新公告'}\n更新时间：${utils.formatTime(currentNoticeData.date)}`,
+                                body: `${currentNoticeData.title}\n${utils.formatTime(currentNoticeData.date)}`,
                                 icon: 'https://img.icons8.com/ios-glyphs/30/2563eb/announcement--v1.png'
                             });
                         }
                     });
                 }
 
-                alert(`🎉 ${tip}：${currentNoticeData.title || '未命名公告'}`);
+                // 弹窗提醒
+                alert(`🎉 ${tip}：${currentNoticeData.title}`);
 
+                // 自动切换到公告面板
                 if (!panelNotice.classList.contains('active')) {
                     switchContentPanel('panelNotice');
                 }
 
+                // 展开悬浮窗口
                 if (!floatWindow.classList.contains('active')) {
                     floatWindow.classList.add('active');
                     currentWindowPos = utils.getDefaultWindowPos();
@@ -363,11 +433,13 @@
                 modalBack.style.display = 'block';
                 isInMainPanel = false;
 
+                // 切换到公告面板时，确保显示最新数据
                 if (targetId === 'panelNotice') {
-                    autoFetchLatestAnnouncement();
+                    autoRenderNotice();
                 }
             }
 
+            // 返回主面板
             function backToMainPanel() {
                 [panelNotice, document.getElementById('panelMy'), document.getElementById('panelContact'), document.getElementById('panelSetting')].forEach(panel => {
                     panel.classList.remove('active');
@@ -378,53 +450,7 @@
                 isInMainPanel = true;
             }
 
-            // 下载逻辑
-            window.startDownload = function() {
-                const downloadProgress = document.getElementById('downloadProgress');
-                const progressBar = document.getElementById('progressBar');
-                const downloadBtn = document.getElementById('downloadBtn');
-
-                if (!downloadProgress || !progressBar || !downloadBtn) return;
-
-                downloadBtn.textContent = '下载中';
-                downloadBtn.disabled = true;
-                progressBar.style.width = '0%';
-
-                let progress = 0;
-                downloadInterval = setInterval(() => {
-                    progress += 5;
-                    progressBar.style.width = `${progress}%`;
-                    if (progress >= 100) {
-                        clearInterval(downloadInterval);
-                        downloadBtn.textContent = '更新';
-                        downloadBtn.onclick = markAsUpdated;
-                    }
-                }, 100);
-            };
-
-            // 更新逻辑
-            window.markAsUpdated = async function() {
-                if (!confirm('⚠️ 确认更新？更新后页面将替换为最新版')) return;
-
-                try {
-                    let fileContent = currentNoticeData?.file?.content;
-
-                    if (!fileContent) {
-                        alert('🔍 正在拉取最新内容，稍等...');
-                        const res = await fetch(`https://${config.domain}.onrender.com/downloadLatestFile`);
-                        if (!res.ok) throw new Error(`拉取失败（${res.status}）`);
-                        fileContent = await res.text();
-                    }
-
-                    localStorage.setItem('latestPage', fileContent);
-                    document.documentElement.innerHTML = fileContent;
-                    alert('✅ 更新成功！当前已是最新内容');
-                } catch (err) {
-                    alert(`❌ 更新失败：${err.message}，请稍等重试`);
-                }
-            };
-
-            // 悬浮球交互
+            // 悬浮球拖拽
             floatBtn.addEventListener('touchstart', (e) => {
                 const touch = e.touches[0];
                 btnDragStart = { x: touch.clientX, y: touch.clientY, rect: floatBtn.getBoundingClientRect() };
@@ -447,6 +473,7 @@
                 }
             }, { passive: false });
 
+            // 悬浮球点击
             floatBtn.addEventListener('click', () => {
                 if (btnIsDragging) return;
                 floatWindow.classList.toggle('active');
@@ -454,6 +481,8 @@
                     currentWindowPos = utils.getDefaultWindowPos();
                     floatWindow.style.left = `${currentWindowPos.left}px`;
                     floatWindow.style.top = `${currentWindowPos.top}px`;
+                    // 展开时确保显示最新公告
+                    autoRenderNotice();
                 }
             });
 
@@ -486,9 +515,13 @@
             btnContact.addEventListener('click', () => switchContentPanel('panelContact'));
             btnSetting.addEventListener('click', () => switchContentPanel('panelSetting'));
 
-            // 初始化
+            // -------------------------- 初始化（新老用户通用） --------------------------
             document.addEventListener('DOMContentLoaded', () => {
+                // 1. 优先渲染localStorage中的最新公告（新用户为空，老用户有数据）
+                autoRenderNotice();
+                // 2. 初始化WebSocket（实时接收新公告）
                 initWebSocket();
+                // 3. 主动拉取最新公告（兜底，确保WebSocket未连接时也能获取）
                 autoFetchLatestAnnouncement();
             });
 
