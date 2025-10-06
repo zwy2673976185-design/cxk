@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>前端更新接收页</title>
+  <style>
+    /* 公告区样式：突出显示，避免忽略（未更新前一直存在） */
+    #noticeArea { 
+      border: 2px solid #ff6700; 
+      padding: 20px; 
+      margin: 30px auto; 
+      max-width: 600px; 
+      background: #fff8f0;
+      border-radius: 8px;
+    }
+    .notice-title { 
+      color: #ff6700; 
+      font-weight: bold; 
+      font-size: 16px; 
+      margin-bottom: 15px;
+    }
+    .notice-content p { 
+      margin: 8px 0; 
+      color: #333; 
+    }
+    button { 
+      margin: 10px 10px 0 0; 
+      padding: 10px 20px; 
+      border: none; 
+      border-radius: 4px; 
+      cursor: pointer; 
+      font-size: 14px;
+    }
+    #downloadBtn { 
+      background: #2d7dff; 
+      color: #fff; 
+    }
+    #updateBtn { 
+      background: #ff6700; 
+      color: #fff; 
+    }
+    #noNotice { 
+      text-align: center; 
+      color: #666; 
+      padding: 10px;
+    }
+    /* 当前页面标题样式 */
+    .page-title { 
+      text-align: center; 
+      color: #333; 
+      margin-top: 50px;
+    }
+  </style>
+</head>
+<body>
+  <h1 class="page-title">当前页面（未更新前，公告不会消失）</h1>
+
+  <!-- 公告区：核心区域，未更新则永久显示，更新后自动隐藏，新文件推送自动替换 -->
+  <div id="noticeArea">
+    <div class="notice-title">📢 待更新公告</div>
+    <div id="noticeContent">
+      <div id="loading">加载中...正在获取最新更新信息</div>
+    </div>
+  </div>
+
+<script>
+// 1. 服务器配置（必须替换成你的服务器IP和端口，和server.js一致）
+const serverIP = "你的服务器IP";
+const serverPort = "3000";
+
+// 2. 页面打开时，自动加载公告（未更新则一直显示，下载也不消失）
+window.onload = () => {
+  getNotice(); // 加载公告
+  checkCachedUpdate(); // 检查是否有缓存的最新页面（避免重复更新）
+};
+
+// 3. 核心：请求服务器，获取公告信息并渲染（新文件推送后，刷新页面即显示最新）
+async function getNotice() {
+  const noticeContent = document.getElementById('noticeContent');
+  try {
+    const res = await fetch(`http://${serverIP}:${serverPort}/getNoticeInfo`);
+    const data = await res.json();
+
+    if (data.success) {
+      // 渲染公告：显示文件信息 + 下载按钮 + 更新按钮（下载后公告仍在，更新后消失）
+      noticeContent.innerHTML = `
+        <div class="notice-content">
+          <p>📄 文件名称：${data.notice.fileName}</p>
+          <p>📊 文件大小：${data.notice.size}</p>
+          <p>⏰ 推送时间：${data.notice.updateTime}</p>
+          <button id="downloadBtn" onclick="downloadFile()">1. 下载最新文件</button>
+          <button id="updateBtn" onclick="doUpdate()">2. 确认更新（更新后公告消失）</button>
+        </div>
+      `;
+    } else {
+      // 无待更新文件时，显示提示
+      noticeContent.innerHTML = `<div id="noNotice">${data.notice}</div>`;
+    }
+  } catch (err) {
+    noticeContent.innerHTML = `<div id="noNotice">❌ 公告加载失败：${err.message}（检查服务器IP/端口是否正确）</div>`;
+  }
+}
+
+// 4. 手动下载最新文件（下载后公告不消失，文件保存在本地）
+function downloadFile() {
+  // 新窗口打开下载接口，避免影响当前页面
+  window.open(`http://${serverIP}:${serverPort}/downloadLatestFile`, '_blank');
+  alert('📥 下载已启动，请在浏览器下载栏查看进度！');
+}
+
+// 5. 手动更新页面（更新后公告消失，页面直接替换为最新版）
+async function doUpdate() {
+  // 二次确认，防止误操作
+  if (!confirm('⚠️ 确认要更新吗？更新后页面将直接变为最新版，旧版暂存缓存！')) {
+    return;
+  }
+
+  const noticeArea = document.getElementById('noticeArea');
+  try {
+    // 请求服务器获取最新文件内容
+    const res = await fetch(`http://${serverIP}:${serverPort}/downloadLatestFile`);
+    if (!res.ok) throw new Error('获取最新文件失败，请先确认已下载文件');
+
+    // 解析文件内容，替换当前页面
+    const blob = await res.blob();
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      // 核心：用最新HTML内容覆盖当前页面
+      document.documentElement.innerHTML = e.target.result;
+      // 缓存最新页面，下次打开直接加载
+      localStorage.setItem('latestPage', e.target.result);
+      alert('✅ 更新成功！页面已变为最新版，公告已隐藏');
+    };
+    reader.readAsText(blob);
+  } catch (err) {
+    alert('❌ 更新失败：' + err.message);
+  }
+}
+
+// 6. 可选：检查缓存的最新页面（下次打开直接加载，无需重复更新）
+function checkCachedUpdate() {
+  const cachedPage = localStorage.getItem('latestPage');
+  if (cachedPage && confirm('📌 检测到缓存的最新页面，是否直接加载？（无需重新更新）')) {
+    document.documentElement.innerHTML = cachedPage;
+  }
+}
+</script>
+</body>
+</html>
