@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>悬浮功能面板（纯净版）</title>
+    <title>悬浮功能面板（紧凑布局版）</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei", sans-serif; }
         body { height: 100vh; overflow: hidden; position: relative; background: #f5f7fa; }
@@ -53,45 +53,30 @@
         }
         .content-panel.active { display: block; }
         
-        /* 公告核心样式（完全纯净，无任何空条） */
+        /* 紧凑公告布局样式 */
         .notice-item { 
-            display: none; /* 无公告时不显示 */
-        }
-        .empty-tip { 
-            text-align: center; 
-            color: #999; 
-            font-size: 14px; 
-            line-height: 1.5; 
-            padding: 20px 0; 
-            border: none; 
-            background: transparent; 
+            padding: 10px 0; display: block; 
         }
         .notice-title { 
-            font-size: 18px; font-weight: 600; color: #2563eb; margin-bottom: 8px; 
-            border-bottom: 1px solid #eee; padding-bottom: 5px;
+            font-size: 18px; font-weight: 600; color: #2563eb; margin-bottom: 5px; 
         }
         .notice-time { 
-            font-size: 13px; color: #666; margin-bottom: 10px; 
-            display: flex; justify-content: center;
+            font-size: 12px; color: #999; margin-bottom: 8px; 
         }
         .notice-content { 
-            font-size: 14px; color: #333; line-height: 1.5; margin-bottom: 12px; word-break: break-word; 
-            padding: 8px; background: #f5f7fa; border-radius: 6px;
+            font-size: 14px; color: #333; line-height: 1.5; margin-bottom: 10px; word-break: break-word; 
         }
         .progress-actions { 
-            display: flex; flex-direction: column; gap: 8px; width: 100%; 
+            display: flex; align-items: center; gap: 10px; 
         }
         .download-progress { 
-            height: 8px; background: #ebf2ff; border-radius: 4px; overflow: hidden; width: 100%; 
+            flex: 1; height: 6px; background: #ebf2ff; border-radius: 3px; overflow: hidden; 
         }
         .progress-bar { 
-            height: 100%; background: #2563eb; border-radius: 4px; width: 0%; transition: width 0.03s linear; 
-        }
-        .action-btns { 
-            display: flex; justify-content: space-around; 
+            height: 100%; background: #2563eb; border-radius: 3px; width: 0%; transition: width 0.03s linear; 
         }
         .action-btn { 
-            padding: 8px 15px; border: none; border-radius: 6px; font-size: 13px; 
+            padding: 6px 12px; border: none; border-radius: 4px; font-size: 12px; 
             cursor: pointer; transition: background 0.2s ease; white-space: nowrap; 
         }
         .download-btn { 
@@ -103,13 +88,22 @@
         .update-btn { 
             background: #10b981; color: white; box-shadow: 0 1px 3px rgba(16, 185, 129, 0.2); display: none; 
         }
+        .empty-tip { 
+            text-align: center; 
+            color: #999; 
+            font-size: 14px; 
+            line-height: 1.5; 
+            padding: 20px 0; 
+            border: none; 
+            background: transparent; 
+        }
     </style>
 </head>
 <body>
     <button class="float-btn" id="floatBtn"></button>
     <div class="float-window" id="floatWindow">
         <div class="window-header" id="windowHeader">
-            功能面板（纯净版）
+            功能面板
             <button class="modal-back" id="modalBack">返回</button>
         </div>
         <div class="func-buttons" id="funcButtons">
@@ -180,6 +174,11 @@
                     if (size < 1024) return `${size}B`;
                     if (size < 1024 * 1024) return `${(size / 1024).toFixed(2)}KB`;
                     return `${(size / (1024 * 1024)).toFixed(2)}MB`;
+                },
+                formatTime(dateStr) {
+                    // 格式化时间为“2025年10月04日”样式
+                    const date = new Date(dateStr);
+                    return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, '0')}月${String(date.getDate()).padStart(2, '0')}日`;
                 },
                 getLastReceivedTime() {
                     return localStorage.getItem('lastReceivedAnnouncementTime') || '2000-01-01 00:00:00';
@@ -288,7 +287,7 @@
                 }
             }
 
-            // 自动渲染公告（完全纯净，无空条）
+            // 自动渲染公告（紧凑布局）
             function autoRenderNotice() {
                 if (!currentNoticeData || currentNoticeData.type !== 'notice') {
                     defaultTip.style.display = 'block';
@@ -296,20 +295,16 @@
                     return;
                 }
 
+                const formattedTime = utils.formatTime(currentNoticeData.date);
                 const noticeHtml = `
                     <div class="notice-title">${currentNoticeData.title || '自定义标题'}</div>
-                    <div class="notice-time">更新时间：${currentNoticeData.date || '当前时间'}</div>
+                    <div class="notice-time">更新时间：${formattedTime}</div>
                     <div class="notice-content">${currentNoticeData.content || '公告内容'}</div>
                     <div class="progress-actions">
                         <div class="download-progress" id="downloadProgress">
                             <div class="progress-bar" id="progressBar"></div>
                         </div>
-                        <div class="action-btns">
-                            <button class="action-btn download-btn" id="downloadBtn" onclick="startDownload()">下载</button>
-                            <button class="action-btns">
-                                <button class="action-btn update-btn" id="updateBtn" onclick="markAsUpdated()">更新</button>
-                            </div>
-                        </div>
+                        <button class="action-btn download-btn" id="downloadBtn" onclick="startDownload()">下载</button>
                     </div>
                 `;
 
@@ -319,9 +314,8 @@
 
                 // 初始化按钮状态
                 const downloadBtn = document.getElementById('downloadBtn');
-                const updateBtn = document.getElementById('updateBtn');
-                if (downloadBtn && updateBtn) {
-                    updateBtn.style.display = 'none';
+                if (downloadBtn) {
+                    downloadBtn.disabled = false;
                 }
             }
 
@@ -329,14 +323,14 @@
             function autoNotifyAndSwitchPanel(tip = '收到新公告') {
                 if (Notification.permission === 'granted') {
                     new Notification(tip, {
-                        body: `${currentNoticeData.title || '新公告'}\n更新时间：${currentNoticeData.date}`,
+                        body: `${currentNoticeData.title || '新公告'}\n更新时间：${utils.formatTime(currentNoticeData.date)}`,
                         icon: 'https://img.icons8.com/ios-glyphs/30/2563eb/announcement--v1.png'
                     });
                 } else if (Notification.permission !== 'denied') {
                     Notification.requestPermission().then(perm => {
                         if (perm === 'granted') {
                             new Notification(tip, {
-                                body: `${currentNoticeData.title || '新公告'}\n更新时间：${currentNoticeData.date}`,
+                                body: `${currentNoticeData.title || '新公告'}\n更新时间：${utils.formatTime(currentNoticeData.date)}`,
                                 icon: 'https://img.icons8.com/ios-glyphs/30/2563eb/announcement--v1.png'
                             });
                         }
@@ -389,11 +383,9 @@
                 const downloadProgress = document.getElementById('downloadProgress');
                 const progressBar = document.getElementById('progressBar');
                 const downloadBtn = document.getElementById('downloadBtn');
-                const updateBtn = document.getElementById('updateBtn');
 
-                if (!downloadProgress || !progressBar || !downloadBtn || !updateBtn) return;
+                if (!downloadProgress || !progressBar || !downloadBtn) return;
 
-                downloadProgress.style.display = 'block';
                 downloadBtn.textContent = '下载中';
                 downloadBtn.disabled = true;
                 progressBar.style.width = '0%';
@@ -404,8 +396,8 @@
                     progressBar.style.width = `${progress}%`;
                     if (progress >= 100) {
                         clearInterval(downloadInterval);
-                        downloadBtn.style.display = 'none';
-                        updateBtn.style.display = 'block';
+                        downloadBtn.textContent = '更新';
+                        downloadBtn.onclick = markAsUpdated;
                     }
                 }, 100);
             };
