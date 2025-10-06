@@ -3,29 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>JS动态加载（悬浮窗常驻版）</title>
+    <title>纯白白板（悬浮窗常驻版）</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: "Microsoft YaHei", sans-serif; }
         body { height: 100vh; overflow: hidden; position: relative; margin: 0; padding: 0; }
         
-        /* 1. 核心：内容容器（仅放动态加载的新HTML，不碰悬浮窗） */
+        /* 1. 动态内容容器：初始纯白白板，无任何测试内容 */
         #dynamicContent { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            z-index: 1; /* 层级低于悬浮窗，不遮挡 */
-            overflow: auto; /* 新页面内容超出屏幕可滚动，模拟正常页面 */
+            z-index: 1; overflow: auto; background: #fff; /* 纯白背景 */
         }
 
-        /* 2. 悬浮球：常驻顶层，JS动态操作不影响它 */
+        /* 2. 悬浮球：常驻顶层 */
         .float-btn { 
             position: fixed; z-index: 9999; width: 60px; height: 60px; border-radius: 0; box-shadow: 0 3px 15px rgba(0,0,0,0.3); 
-            cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform 0.2s ease, box-shadow 0.2s ease; 
+            cursor: pointer; user-select: none; -webkit-tap-highlight-color: transparent; transition: transform 0.2s ease; 
             background-image: url(https://i.imgs.ovh/2025/09/28/75fraO.jpeg); background-color: #f0f0f0; 
             background-size: cover; background-position: center; background-repeat: no-repeat; 
             padding: 0; margin: 0; border: none; right: 20px; bottom: 50px; 
         }
-        .float-btn:active { transform: scale(0.95); box-shadow: 0 5px 20px rgba(0,0,0,0.4); }
+        .float-btn:active { transform: scale(0.95); }
         
-        /* 3. 悬浮窗：常驻顶层，DOM独立，不被动态内容删除 */
+        /* 3. 悬浮窗：仅核心功能，无测试内容 */
         .float-window { 
             position: fixed; z-index: 9998; width: 300px; height: 280px; background: white; border-radius: 12px; 
             box-shadow: 0 5px 25px rgba(0,0,0,0.15); overflow: hidden; display: none; opacity: 0; transition: opacity 0.3s ease; 
@@ -39,54 +38,49 @@
         }
         .modal-back { 
             background: transparent; border: none; color: white; font-size: 14px; cursor: pointer; 
-            padding: 4px 8px; border-radius: 4px; transition: background 0.2s ease; display: none; -webkit-tap-highlight-color: transparent; 
+            padding: 4px 8px; border-radius: 4px; display: none; 
         }
-        .modal-back:hover { background: rgba(255,255,255,0.1); }
         
         .func-buttons { 
             padding: 10px; display: flex; flex-direction: column; gap: 10px; 
-            max-height: calc(280px - 44px); overflow-y: auto; -webkit-overflow-scrolling: touch; 
+            max-height: calc(280px - 44px); overflow-y: auto; 
         }
         .func-btn { 
             padding: 12px 15px; border-radius: 8px; background: #f8f9fa; font-size: 14px; color: #333; 
-            text-align: left; cursor: pointer; transition: background 0.2s ease, transform 0.1s ease; 
+            text-align: left; cursor: pointer; transition: background 0.2s ease; 
             display: flex; align-items: center; justify-content: space-between; 
-            -webkit-tap-highlight-color: transparent; border: none; box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            border: none; 
         }
-        .func-btn:hover { background: #f1f3f5; transform: translateY(-1px); }
+        .func-btn:hover { background: #f1f3f5; }
         .btn-icon { width: 20px; height: 20px; opacity: 0.7; }
         
         .content-panel { 
-            padding: 15px; max-height: calc(280px - 44px); overflow-y: auto; 
-            -webkit-overflow-scrolling: touch; display: none; 
+            padding: 15px; max-height: calc(280px - 44px); overflow-y: auto; display: none; 
         }
         .content-panel.active { display: block; }
         
-        /* 更新模块样式：核心元素保留，样式隔离 */
-        .notice-item { padding: 10px 0; display: block; }
+        /* 更新模块：仅核心元素 */
+        .notice-item { padding: 10px 0; }
         .notice-title { font-size: 18px; font-weight: 600; color: #2563eb; margin-bottom: 8px; }
         .notice-time { font-size: 12px; color: #999; margin-bottom: 10px; }
         .progress-actions { display: flex; align-items: center; gap: 10px; }
         .download-progress { flex: 1; height: 6px; background: #ebf2ff; border-radius: 3px; overflow: hidden; }
         .progress-bar { height: 100%; background: #2563eb; border-radius: 3px; width: 0%; transition: width 0.03s linear; }
-        .action-btn { padding: 6px 12px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; transition: background 0.2s ease; white-space: nowrap; }
-        .download-btn { background: #2563eb; color: white; box-shadow: 0 1px 3px rgba(37, 99, 235, 0.2); }
+        .action-btn { padding: 6px 12px; border: none; border-radius: 4px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+        .download-btn { background: #2563eb; color: white; }
         .download-btn:disabled { background: #93c5fd; cursor: not-allowed; }
-        .update-btn { background: #10b981; color: white; box-shadow: 0 1px 3px rgba(16, 185, 129, 0.2); display: block; }
-        .empty-tip { text-align: center; color: #999; font-size: 14px; line-height: 1.5; padding: 20px 0; border: none; background: transparent; }
-
-        /* 新页面样式隔离提示：建议新HTML样式加前缀，避免冲突 */
-        #dynamicContent * { box-sizing: border-box; }
+        .update-btn { background: #10b981; color: white; display: block; }
+        .empty-tip { text-align: center; color: #999; font-size: 14px; padding: 20px 0; }
     </style>
 </head>
 <body>
-    <!-- 1. 动态内容容器：所有新HTML都动态插入这里，不影响其他DOM -->
+    <!-- 1. 动态内容容器：初始纯白白板，无任何测试内容 -->
     <div id="dynamicContent"></div>
 
-    <!-- 2. 悬浮球：DOM独立，常驻页面 -->
+    <!-- 2. 悬浮球：常驻 -->
     <button class="float-btn" id="floatBtn"></button>
 
-    <!-- 3. 悬浮窗：DOM独立，功能完整 -->
+    <!-- 3. 悬浮窗：功能面板按钮顺序（1.我的 2.公告 3.联系作者 4.设置） -->
     <div class="float-window" id="floatWindow">
         <div class="window-header" id="windowHeader">
             功能面板
@@ -117,14 +111,13 @@
             </div>
         </div>
         <div class="content-panel" id="panelMy">
-            <div class="user-name">用一生找寻</div>
-            <div class="user-desc">当前功能待开发，暂显示用户名</div>
+            <div class="empty-tip">功能待开发</div>
         </div>
         <div class="content-panel" id="panelContact">
-            <div class="empty-tip">点击下方链接联系作者<br><a href="https://qzone.qq.com/2673976185" target="_blank" style="color: #2563eb; text-decoration: none;">前往作者QQ空间</a></div>
+            <div class="empty-tip">功能待开发</div>
         </div>
         <div class="content-panel" id="panelSetting">
-            <div class="empty-tip">设置功能待开发</div>
+            <div class="empty-tip">功能待开发</div>
         </div>
     </div>
 
@@ -133,22 +126,16 @@
             if (window.floatingWindowInjected) return;
             window.floatingWindowInjected = true;
 
-            // 配置项：替换为你的服务信息
+            // 配置项：初始页面为纯空白，无任何测试内容
             const config = { 
-                domain: "cxk-z875", // Render服务名
+                domain: "cxk-z875", // 替换为你的Render服务名
                 latestNoticeKey: "latestReceivedNotice", // 存储更新信息
                 downloadedFileKey: "downloadedFileStatus", // 存储下载状态（永久）
-                initHtmlContent: `<!-- 初始页面内容（可替换为你的首页HTML） -->
-                    <div style="padding: 20px; text-align: center;">
-                        <h1>初始首页</h1>
-                        <p style="margin: 20px 0;">点击右下角悬浮窗检查更新</p>
-                        <button style="padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 4px; cursor: pointer;" onclick="alert('初始页面按钮正常工作')">测试初始页面功能</button>
-                    </div>`
+                initHtmlContent: "" // 初始页面纯空白，无测试内容
             };
 
-            // 工具函数：核心功能保留，全局可用
+            // 工具函数：核心功能保留
             const utils = {
-                // 边界校验（悬浮窗拖拽用）
                 checkWindowBound(left, top) { 
                     const w = document.documentElement.clientWidth; 
                     const h = document.documentElement.clientHeight; 
@@ -157,29 +144,25 @@
                         top: Math.max(20, Math.min(top, h - 280 - 20)) 
                     }; 
                 },
-                // 时间格式化
                 formatTime(dateStr) {
                     const date = new Date(dateStr);
                     return `${date.getFullYear()}年${String(date.getMonth() + 1).padStart(2, '0')}月${String(date.getDate()).padStart(2, '0')}日`;
                 },
-                // 本地存储操作（更新信息+下载状态）
                 getStorage(key) { return localStorage.getItem(key) ? JSON.parse(localStorage.getItem(key)) : null; },
                 setStorage(key, data) { localStorage.setItem(key, JSON.stringify(data)); },
-                // 文件哈希校验（确保新文件精准识别）
                 async calculateFileHash(content) {
                     const encoder = new TextEncoder();
                     const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(content));
                     return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
                 },
-                // 检查文件是否已下载（永久生效，新文件才重置）
                 isFileDownloaded(fileName, fileHash) {
                     const status = this.getStorage(config.downloadedFileKey);
                     return status && status.name === fileName && status.hash === fileHash;
                 }
             };
 
-            // DOM元素：核心分两类，互不干扰
-            const dynamicContent = document.getElementById('dynamicContent'); // 动态内容容器
+            // DOM元素：核心容器
+            const dynamicContent = document.getElementById('dynamicContent');
             const floatBtn = document.getElementById('floatBtn');
             const floatWindow = document.getElementById('floatWindow');
             const modalBack = document.getElementById('modalBack');
@@ -189,85 +172,60 @@
             const defaultTip = document.getElementById('defaultTip');
             const pushNotice = document.getElementById('pushNotice');
 
-            // 全局状态：不受动态内容影响
+            // 全局状态
             let currentWindowPos = utils.checkWindowBound((window.innerWidth-300)/2, (window.innerHeight-280)/2);
             let currentNoticeData = utils.getStorage(config.latestNoticeKey) || null;
             let btnIsDragging = false, winIsDragging = false;
             let btnDragStart = null, winDragStart = null;
             let downloadInterval = null;
 
-            // 1. 初始化：加载初始页面（纯JS动态插入）
-            function initDefaultPage() {
-                if (config.initHtmlContent) {
-                    renderDynamicHtml(config.initHtmlContent);
-                }
+            // 1. 初始化：纯白白板
+            function initBlankPage() {
+                dynamicContent.innerHTML = '';
             }
 
-            // 2. 核心方法：纯JS动态渲染新HTML（关键！不碰悬浮窗DOM）
+            // 2. 动态加载新HTML（更新后固定不回退）
             function renderDynamicHtml(htmlContent) {
                 if (!htmlContent) return;
-
-                // 步骤1：清空旧内容（只清动态容器，悬浮窗不动）
                 dynamicContent.innerHTML = '';
 
-                // 步骤2：创建临时容器，解析HTML结构
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = htmlContent;
 
-                // 步骤3：提取并插入样式（确保新页面样式生效）
-                const styles = tempDiv.querySelectorAll('style');
-                styles.forEach(style => {
+                // 插入样式
+                tempDiv.querySelectorAll('style').forEach(style => {
                     dynamicContent.appendChild(style.cloneNode(true));
                 });
 
-                // 步骤4：提取并插入页面结构（body内容）
+                // 插入页面结构
                 const bodyContent = tempDiv.querySelector('body')?.innerHTML || tempDiv.innerHTML;
-                const contentWrapper = document.createElement('div');
-                contentWrapper.innerHTML = bodyContent;
-                dynamicContent.appendChild(contentWrapper);
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = bodyContent;
+                dynamicContent.appendChild(wrapper);
 
-                // 步骤5：提取并执行脚本（确保新页面JS功能正常）
-                const scripts = tempDiv.querySelectorAll('script');
-                scripts.forEach(oldScript => {
+                // 执行脚本
+                tempDiv.querySelectorAll('script').forEach(oldScript => {
                     const newScript = document.createElement('script');
-                    // 复制脚本属性（src/text）
-                    if (oldScript.src) newScript.src = oldScript.src;
-                    if (oldScript.textContent) newScript.textContent = oldScript.textContent;
-                    // 脚本加载/执行完成后插入（避免顺序问题）
-                    newScript.onload = newScript.onreadystatechange = function() {
-                        if (!this.readyState || this.readyState === 'loaded' || this.readyState === 'complete') {
-                            dynamicContent.appendChild(newScript);
-                        }
-                    };
-                    // 无src的脚本直接插入
-                    if (!oldScript.src) dynamicContent.appendChild(newScript);
+                    oldScript.src ? (newScript.src = oldScript.src) : (newScript.textContent = oldScript.textContent);
+                    oldScript.src ? (newScript.onload = () => dynamicContent.appendChild(newScript)) : dynamicContent.appendChild(newScript);
                 });
-
-                // 提示：新页面样式建议加前缀（如#dynamicContent .new-page-xxx），避免和悬浮窗冲突
             }
 
-            // 3. WebSocket：全局常驻，实时接收新更新
+            // 3. WebSocket：常驻连接
             let ws;
             const RECONNECT_DELAY = 1000;
             function initWebSocket() {
                 if (ws) ws.close();
                 ws = new WebSocket(`wss://${config.domain}.onrender.com`);
 
-                ws.onopen = () => {
-                    console.log('WebSocket连接成功');
-                    fetchLatestNotice(); // 拉取最新更新
-                };
-
-                ws.onclose = () => {
-                    console.log('WebSocket断开，自动重连');
-                    setTimeout(initWebSocket, RECONNECT_DELAY);
-                };
+                ws.onopen = () => fetchLatestNotice();
+                ws.onclose = () => setTimeout(initWebSocket, RECONNECT_DELAY);
+                ws.onerror = (err) => { console.error('WebSocket错误：', err); if (ws.readyState !== 3) ws.close(); };
 
                 ws.onmessage = async (e) => {
                     try {
                         const newData = JSON.parse(e.data);
                         if (newData.type === 'notice' && newData.file?.content) {
-                            // 哈希校验：仅新文件才更新状态
                             const fileHash = await utils.calculateFileHash(newData.file.content);
                             newData.file.hash = fileHash;
                             const isNewFile = !utils.isFileDownloaded(newData.file.name, fileHash);
@@ -279,13 +237,11 @@
                                 notifyNewUpdate();
                             }
                         }
-                    } catch (err) {
-                        console.error('解析更新失败：', err);
-                    }
+                    } catch (err) { console.error('解析更新失败：', err); }
                 };
             }
 
-            // 4. 拉取最新更新（兜底：WebSocket断开时用）
+            // 4. 拉取最新更新
             async function fetchLatestNotice() {
                 try {
                     const res = await fetch(`https://${config.domain}.onrender.com/getLatestAnnouncement`);
@@ -312,7 +268,7 @@
                 }
             }
 
-            // 5. 渲染更新面板（下载/更新按钮状态）
+            // 5. 渲染更新面板
             function renderUpdatePanel() {
                 if (!currentNoticeData?.file) {
                     defaultTip.style.display = 'block';
@@ -323,7 +279,6 @@
                 const { name: fileName, hash } = currentNoticeData.file;
                 const isDownloaded = utils.isFileDownloaded(fileName, hash);
 
-                // 渲染核心元素：更新标题、时间、进度条、按钮
                 pushNotice.innerHTML = `
                     <div class="notice-title">更新</div>
                     <div class="notice-time">更新时间：${utils.formatTime(currentNoticeData.date || new Date())}</div>
@@ -343,23 +298,19 @@
                 pushNotice.style.display = 'block';
             }
 
-            // 6. 下载逻辑：纯JS控制，完成后永久变“更新”
+            // 6. 下载逻辑
             window.handleDownload = function() {
                 const progressBar = document.getElementById('progressBar');
                 const downloadBtn = document.getElementById('downloadBtn');
                 const { name: fileName, content, hash } = currentNoticeData.file;
 
                 if (!progressBar || !downloadBtn || !content) return;
-
-                // 清除旧定时器，避免卡住
                 if (downloadInterval) clearInterval(downloadInterval);
 
-                // 下载中状态
                 downloadBtn.textContent = '下载中';
                 downloadBtn.disabled = true;
                 progressBar.style.width = '0%';
 
-                // 模拟进度（实际可替换为真实下载进度）
                 let progress = 0;
                 downloadInterval = setInterval(() => {
                     progress += 5;
@@ -367,12 +318,10 @@
 
                     if (progress >= 100) {
                         clearInterval(downloadInterval);
-                        // 永久切换为“更新”按钮
                         downloadBtn.textContent = '更新';
                         downloadBtn.className = 'action-btn update-btn';
                         downloadBtn.onclick = handleUpdate;
                         downloadBtn.disabled = false;
-                        // 标记已下载（localStorage永久存储）
                         utils.setStorage(config.downloadedFileKey, {
                             name: fileName,
                             hash: hash,
@@ -382,45 +331,40 @@
                 }, 100);
             };
 
-            // 7. 更新逻辑：纯JS动态加载新HTML（不删悬浮窗）
+            // 7. 更新逻辑（固定不回退）
             window.handleUpdate = function() {
-                if (!confirm('确认更新？更新后加载最新页面，悬浮窗可正常使用')) return;
+                if (!confirm('确认更新？更新后将固定在新页面，仅新文件可重新更新')) return;
 
                 try {
                     const { content: newHtmlContent } = currentNoticeData.file;
                     if (!newHtmlContent) throw new Error('无最新页面内容');
 
-                    // 关键：调用动态渲染方法，只更内容容器
                     renderDynamicHtml(newHtmlContent);
-                    alert('更新成功！新页面功能正常，悬浮窗可随时使用');
+                    alert('更新成功！已固定在新页面');
                 } catch (err) {
                     alert(`更新失败：${err.message}`);
                 }
             };
 
-            // 8. 悬浮窗辅助功能：提示、拖拽、面板切换
+            // 8. 新文件提示
             function notifyNewUpdate() {
-                // 系统通知
                 if (Notification.permission === 'granted') {
                     new Notification('收到新更新', {
                         body: `更新时间：${utils.formatTime(currentNoticeData.date)}`,
                         icon: 'https://img.icons8.com/ios-glyphs/30/2563eb/announcement--v1.png'
                     });
                 } else if (Notification.permission !== 'denied') {
-                    Notification.requestPermission().then(perm => {
-                        if (perm === 'granted') notifyNewUpdate();
-                    });
+                    Notification.requestPermission().then(perm => perm === 'granted' && notifyNewUpdate());
                 }
 
-                // 弹窗提示+展开悬浮窗
-                alert('收到新更新！点击悬浮窗查看');
+                alert('收到新更新！点击悬浮窗下载');
                 floatWindow.classList.add('active');
                 floatWindow.style.left = `${currentWindowPos.left}px`;
                 floatWindow.style.top = `${currentWindowPos.top}px`;
                 renderUpdatePanel();
             }
 
-            // 面板切换
+            // 9. 面板切换
             function switchPanel(targetId) {
                 document.querySelectorAll('.content-panel').forEach(panel => {
                     panel.classList.remove('active');
@@ -444,15 +388,14 @@
                 const dy = touch.clientY - btnDragStart.y;
                 if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
                     btnIsDragging = true;
-                    const newLeft = btnDragStart.rect.left + dx;
-                    const newTop = btnDragStart.rect.top + dy;
-                    // 边界限制
-                    floatBtn.style.left = `${Math.max(20, Math.min(newLeft, window.innerWidth - 80))}px`;
-                    floatBtn.style.top = `${Math.max(20, Math.min(newTop, window.innerHeight - 80))}px`;
+                    const newLeft = Math.max(20, Math.min(btnDragStart.rect.left + dx, window.innerWidth - 80));
+                    const newTop = Math.max(20, Math.min(btnDragStart.rect.top + dy, window.innerHeight - 80));
+                    floatBtn.style.left = `${newLeft}px`;
+                    floatBtn.style.top = `${newTop}px`;
                 }
             }, { passive: false });
 
-            // 悬浮球点击（展开/收起）
+            // 悬浮球点击
             floatBtn.addEventListener('click', () => {
                 if (btnIsDragging) return;
                 floatWindow.classList.toggle('active');
@@ -484,7 +427,7 @@
                 }
             }, { passive: false });
 
-            // 面板按钮事件
+            // 面板按钮点击
             modalBack.addEventListener('click', () => {
                 document.querySelectorAll('.content-panel').forEach(panel => {
                     panel.classList.remove('active');
@@ -510,7 +453,7 @@
                 switchPanel('panelSetting');
             });
 
-            // 窗口 resize 适配
+            // 窗口适配
             window.addEventListener('resize', () => {
                 if (floatWindow.classList.contains('active')) {
                     currentWindowPos = utils.checkWindowBound(currentWindowPos.left, currentWindowPos.top);
@@ -519,9 +462,9 @@
                 }
             });
 
-            // 启动流程：先加载初始页面，再启动WebSocket
+            // 启动
             document.addEventListener('DOMContentLoaded', () => {
-                initDefaultPage();
+                initBlankPage();
                 initWebSocket();
                 fetchLatestNotice();
             });
